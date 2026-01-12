@@ -12,6 +12,12 @@ $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t');
 $report_type = isset($_GET['report_type']) ? $_GET['report_type'] : 'weekly';
 
+// Handle 'today' report type
+if ($report_type == 'today') {
+    $start_date = date('Y-m-d');
+    $end_date = date('Y-m-d');
+}
+
 // Function to get overview statistics
 function getOverviewStats($conn, $start_date, $end_date) {
     $stats = [];
@@ -308,13 +314,88 @@ function getRecentVisits($conn, $start_date, $end_date, $limit = 10) {
     return $stmt->get_result();
 }
 
+// NEW: Function to get recent visits with pagination
+function getRecentVisitsWithPagination($conn, $start_date, $end_date, $records_per_page = 10, $page = 1) {
+    // Calculate offset
+    $offset = ($page - 1) * $records_per_page;
+    
+    // Get total count for pagination
+    $sql_count = "SELECT COUNT(*) as total FROM clinic_records WHERE date BETWEEN ? AND ?";
+    $stmt = $conn->prepare($sql_count);
+    $stmt->bind_param("ss", $start_date, $end_date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $total_rows = $result->fetch_assoc()['total'];
+    
+    // Get paginated data
+    $sql = "SELECT 
+                name, 
+                grade_section, 
+                complaint, 
+                treatment, 
+                DATE(date) as visit_date,
+                TIME(date) as visit_time
+            FROM clinic_records 
+            WHERE date BETWEEN ? AND ?
+            ORDER BY date DESC 
+            LIMIT ? OFFSET ?";
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ssii", $start_date, $end_date, $records_per_page, $offset);
+    $stmt->execute();
+    $data_result = $stmt->get_result();
+    
+    return [
+        'data' => $data_result,
+        'total' => $total_rows,
+        'page' => $page,
+        'records_per_page' => $records_per_page,
+        'total_pages' => ceil($total_rows / $records_per_page)
+    ];
+}
+
+// NEW: Function to get complaint distribution with limit (for table)
+function getComplaintDistributionForTable($conn, $start_date, $end_date, $limit = 10) {
+    $sql = "SELECT 
+                CASE 
+                    WHEN LOWER(complaint) LIKE '%head%' OR LOWER(complaint) LIKE '%ulo%' THEN 'Headache/Head Pain'
+                    WHEN LOWER(complaint) LIKE '%stomach%' OR LOWER(complaint) LIKE '%tiyan%' THEN 'Stomach Pain'
+                    WHEN LOWER(complaint) LIKE '%eye%' OR LOWER(complaint) LIKE '%mata%' THEN 'Eye Pain/Problem'
+                    WHEN LOWER(complaint) LIKE '%fever%' OR LOWER(complaint) LIKE '%lagnat%' THEN 'Fever'
+                    WHEN LOWER(complaint) LIKE '%cough%' OR LOWER(complaint) LIKE '%ubo%' THEN 'Cough'
+                    WHEN complaint IS NULL OR complaint = '' THEN 'Not Specified'
+                    ELSE complaint 
+                END as complaint_group,
+                COUNT(*) as count 
+            FROM clinic_records 
+            WHERE date BETWEEN ? AND ? 
+            GROUP BY complaint_group 
+            ORDER BY count DESC 
+            LIMIT ?";
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("ssi", $start_date, $end_date, $limit);
+    $stmt->execute();
+    return $stmt->get_result();
+}
+
+// Get pagination parameters
+$records_per_page = isset($_GET['records_per_page']) ? (int)$_GET['records_per_page'] : 10;
+$current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+
 // Get all statistics
 $overview_stats = getOverviewStats($conn, $start_date, $end_date);
 $daily_data = getDailyVisitsData($conn, $start_date, $end_date);
 $weekly_stats = getWeeklyStats($conn, $start_date, $end_date);
 $complaint_data = getComplaintDistribution($conn, $start_date, $end_date);
 $top_classes = getTopClasses($conn, $start_date, $end_date);
-$recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
+$recent_visits_paginated = getRecentVisitsWithPagination($conn, $start_date, $end_date, $records_per_page, $current_page);
+$recent_visits = $recent_visits_paginated['data'];
+$total_recent_visits = $recent_visits_paginated['total'];
+$total_pages = $recent_visits_paginated['total_pages'];
+
+// Get complaint data for table (limit 10)
+$complaint_table_data = getComplaintDistributionForTable($conn, $start_date, $end_date, 10);
 ?>
 
 <!DOCTYPE html>
@@ -477,16 +558,6 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
         .action-btn.print:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-        }
-
-        .action-btn.export {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-        }
-
-        .action-btn.export:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
 
         /* Date Range Display */
@@ -895,6 +966,133 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                 page-break-inside: avoid;
             }
         }
+
+        /* NEW: Pagination Styles */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .pagination-info {
+            font-size: 14px;
+            color: #495057;
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .pagination-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            color: #495057;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: #4361ee;
+            color: white;
+            border-color: #4361ee;
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .page-numbers {
+            display: flex;
+            gap: 5px;
+        }
+
+        .page-number {
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            color: #495057;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .page-number:hover {
+            background: #e9ecef;
+        }
+
+        .page-number.active {
+            background: #4361ee;
+            color: white;
+            border-color: #4361ee;
+        }
+
+        .records-per-page {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .records-per-page select {
+            padding: 8px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .records-per-page label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        /* NEW: Quick Filter Buttons */
+        .quick-filters {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .quick-filter-btn {
+            padding: 8px 16px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            color: #495057;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            text-decoration: none;
+        }
+
+        .quick-filter-btn:hover {
+            background: #4361ee;
+            color: white;
+            border-color: #4361ee;
+        }
+
+        .quick-filter-btn.active {
+            background: #4361ee;
+            color: white;
+            border-color: #4361ee;
+        }
     </style>
 </head>
 <body>
@@ -912,7 +1110,6 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                 <button class="action-btn print" onclick="printReport()">
                     <i class="fas fa-print"></i> Print Report
                 </button>
-              
             </div>
 
             <!-- Date Range Display -->
@@ -941,6 +1138,7 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                         <div class="filter-item">
                             <label><i class="fas fa-chart-bar"></i> Report Type</label>
                             <select name="report_type">
+                                <option value="today" <?php echo $report_type == 'today' ? 'selected' : ''; ?>>Today's Analysis</option>
                                 <option value="weekly" <?php echo $report_type == 'weekly' ? 'selected' : ''; ?>>Weekly Analysis</option>
                                 <option value="monthly" <?php echo $report_type == 'monthly' ? 'selected' : ''; ?>>Monthly Analysis</option>
                                 <option value="comparison" <?php echo $report_type == 'comparison' ? 'selected' : ''; ?>>Period Comparison</option>
@@ -950,6 +1148,22 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                         <button type="submit" class="btn-apply">
                             <i class="fas fa-filter"></i> Generate Report
                         </button>
+                    </div>
+
+                    <!-- Quick Date Filters -->
+                    <div class="quick-filters">
+                        <a href="?start_date=<?php echo date('Y-m-d'); ?>&end_date=<?php echo date('Y-m-d'); ?>&report_type=today" class="quick-filter-btn <?php echo ($start_date == date('Y-m-d') && $end_date == date('Y-m-d')) ? 'active' : ''; ?>">
+                            <i class="fas fa-sun"></i> Today
+                        </a>
+                        <a href="?start_date=<?php echo date('Y-m-d', strtotime('-7 days')); ?>&end_date=<?php echo date('Y-m-d'); ?>&report_type=weekly" class="quick-filter-btn <?php echo ($start_date == date('Y-m-d', strtotime('-7 days')) && $end_date == date('Y-m-d')) ? 'active' : ''; ?>">
+                            <i class="fas fa-calendar-week"></i> Last 7 Days
+                        </a>
+                        <a href="?start_date=<?php echo date('Y-m-01'); ?>&end_date=<?php echo date('Y-m-t'); ?>&report_type=monthly" class="quick-filter-btn <?php echo ($start_date == date('Y-m-01') && $end_date == date('Y-m-t')) ? 'active' : ''; ?>">
+                            <i class="fas fa-calendar-alt"></i> This Month
+                        </a>
+                        <a href="?start_date=<?php echo date('Y-m-01', strtotime('-1 month')); ?>&end_date=<?php echo date('Y-m-t', strtotime('-1 month')); ?>&report_type=monthly" class="quick-filter-btn <?php echo ($start_date == date('Y-m-01', strtotime('-1 month')) && $end_date == date('Y-m-t', strtotime('-1 month'))) ? 'active' : ''; ?>">
+                            <i class="fas fa-calendar"></i> Last Month
+                        </a>
                     </div>
                 </form>
             </div>
@@ -1124,8 +1338,25 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
             <!-- Recent Visits Table -->
             <div class="table-container" style="margin-bottom: 30px;">
                 <div class="table-title">
-                    <i class="fas fa-history"></i> Recent Clinic Visits (Last 10)
+                    <i class="fas fa-history"></i> Recent Clinic Visits
                 </div>
+                
+                <!-- Records per page filter -->
+                <form method="GET" action="" class="records-per-page">
+                    <input type="hidden" name="start_date" value="<?php echo $start_date; ?>">
+                    <input type="hidden" name="end_date" value="<?php echo $end_date; ?>">
+                    <input type="hidden" name="report_type" value="<?php echo $report_type; ?>">
+                    <input type="hidden" name="page" value="1">
+                    
+                    <label for="records_per_page">Show:</label>
+                    <select name="records_per_page" id="records_per_page" onchange="this.form.submit()">
+                        <option value="5" <?php echo $records_per_page == 5 ? 'selected' : ''; ?>>5 records</option>
+                        <option value="10" <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10 records</option>
+                        <option value="20" <?php echo $records_per_page == 20 ? 'selected' : ''; ?>>20 records</option>
+                        <option value="50" <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50 records</option>
+                    </select>
+                </form>
+                
                 <div class="table-wrapper">
                     <?php if ($recent_visits->num_rows > 0): ?>
                         <table>
@@ -1142,7 +1373,7 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                             </thead>
                             <tbody>
                                 <?php 
-                                $i = 1;
+                                $i = (($current_page - 1) * $records_per_page) + 1;
                                 while ($row = $recent_visits->fetch_assoc()): 
                                 ?>
                                     <tr>
@@ -1157,6 +1388,57 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                                 <?php endwhile; ?>
                             </tbody>
                         </table>
+                        
+                        <!-- Pagination -->
+                        <div class="pagination">
+                            <div class="pagination-info">
+                                Showing <?php echo (($current_page - 1) * $records_per_page) + 1; ?> to <?php echo min($current_page * $records_per_page, $total_recent_visits); ?> of <?php echo $total_recent_visits; ?> entries
+                            </div>
+                            <div class="pagination-controls">
+                                <a href="?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&report_type=<?php echo $report_type; ?>&records_per_page=<?php echo $records_per_page; ?>&page=<?php echo max(1, $current_page - 1); ?>" 
+                                   class="pagination-btn <?php echo $current_page == 1 ? 'disabled' : ''; ?>">
+                                    <i class="fas fa-chevron-left"></i> Previous
+                                </a>
+                                
+                                <div class="page-numbers">
+                                    <?php
+                                    // Show first page
+                                    if ($current_page > 3): ?>
+                                        <a href="?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&report_type=<?php echo $report_type; ?>&records_per_page=<?php echo $records_per_page; ?>&page=1" 
+                                           class="page-number">1</a>
+                                        <?php if ($current_page > 4): ?>
+                                            <span class="page-number">...</span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                    
+                                    <?php
+                                    // Show pages around current page
+                                    for ($p = max(1, $current_page - 2); $p <= min($total_pages, $current_page + 2); $p++):
+                                        if ($p > 0): ?>
+                                            <a href="?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&report_type=<?php echo $report_type; ?>&records_per_page=<?php echo $records_per_page; ?>&page=<?php echo $p; ?>" 
+                                               class="page-number <?php echo $p == $current_page ? 'active' : ''; ?>">
+                                                <?php echo $p; ?>
+                                            </a>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+                                    
+                                    <?php
+                                    // Show last page
+                                    if ($current_page < $total_pages - 2): ?>
+                                        <?php if ($current_page < $total_pages - 3): ?>
+                                            <span class="page-number">...</span>
+                                        <?php endif; ?>
+                                        <a href="?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&report_type=<?php echo $report_type; ?>&records_per_page=<?php echo $records_per_page; ?>&page=<?php echo $total_pages; ?>" 
+                                           class="page-number"><?php echo $total_pages; ?></a>
+                                    <?php endif; ?>
+                                </div>
+                                
+                                <a href="?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&report_type=<?php echo $report_type; ?>&records_per_page=<?php echo $records_per_page; ?>&page=<?php echo min($total_pages, $current_page + 1); ?>" 
+                                   class="pagination-btn <?php echo $current_page == $total_pages ? 'disabled' : ''; ?>">
+                                    Next <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </div>
+                        </div>
                     <?php else: ?>
                         <div class="no-data">
                             <i class="fas fa-history"></i>
@@ -1167,13 +1449,13 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                 </div>
             </div>
 
-            <!-- Complaint Details Table -->
+            <!-- Complaint Analysis Details Table -->
             <div class="table-container">
                 <div class="table-title">
-                    <i class="fas fa-stethoscope"></i> Complaint Analysis Details
+                    <i class="fas fa-stethoscope"></i> Top 10 Complaint Analysis Details
                 </div>
                 <div class="table-wrapper">
-                    <?php if (!empty($complaint_data['labels'])): ?>
+                    <?php if ($complaint_table_data->num_rows > 0): ?>
                         <table>
                             <thead>
                                 <tr>
@@ -1186,16 +1468,24 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                             </thead>
                             <tbody>
                                 <?php 
-                                $total_complaints = array_sum($complaint_data['data']);
-                                foreach ($complaint_data['labels'] as $index => $complaint):
-                                    $count = $complaint_data['data'][$index];
-                                    $percentage = $total_complaints > 0 ? round(($count / $total_complaints) * 100, 1) : 0;
+                                // Calculate total complaints for percentage
+                                $total_complaints_for_table = 0;
+                                $complaint_table_data->data_seek(0);
+                                while ($row = $complaint_table_data->fetch_assoc()) {
+                                    $total_complaints_for_table += $row['count'];
+                                }
+                                $complaint_table_data->data_seek(0);
+                                
+                                $i = 1;
+                                while ($row = $complaint_table_data->fetch_assoc()):
+                                    $count = $row['count'];
+                                    $percentage = $total_complaints_for_table > 0 ? round(($count / $total_complaints_for_table) * 100, 1) : 0;
                                     $trend = $percentage > 20 ? 'High' : ($percentage > 10 ? 'Medium' : 'Low');
                                     $trend_color = $percentage > 20 ? '#ef4444' : ($percentage > 10 ? '#f59e0b' : '#10b981');
                                 ?>
                                     <tr>
-                                        <td><?php echo $index + 1; ?></td>
-                                        <td><?php echo htmlspecialchars($complaint); ?></td>
+                                        <td><?php echo $i++; ?></td>
+                                        <td><?php echo htmlspecialchars($row['complaint_group']); ?></td>
                                         <td><span class="count-badge"><?php echo $count; ?></span></td>
                                         <td>
                                             <div class="percentage-bar">
@@ -1211,7 +1501,7 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                                             </span>
                                         </td>
                                     </tr>
-                                <?php endforeach; ?>
+                                <?php endwhile; ?>
                             </tbody>
                         </table>
                     <?php else: ?>
@@ -1297,9 +1587,11 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
             </div>
             
             <!-- Complaints Table in Print -->
-            <?php if (!empty($complaint_data['labels'])): ?>
+            <?php if ($complaint_table_data->num_rows > 0): 
+                $complaint_table_data->data_seek(0);
+            ?>
             <div style="margin-bottom: 30px;">
-                <h3 style="color: #4361ee; margin-bottom: 15px; font-size: 18px; border-bottom: 2px solid #4361ee; padding-bottom: 5px;">Complaint Distribution</h3>
+                <h3 style="color: #4361ee; margin-bottom: 15px; font-size: 18px; border-bottom: 2px solid #4361ee; padding-bottom: 5px;">Top 10 Complaint Distribution</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
                         <tr style="background: #f8f9fa;">
@@ -1310,25 +1602,38 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                     </thead>
                     <tbody>
                         <?php 
-                        $total_complaints = array_sum($complaint_data['data']);
-                        foreach ($complaint_data['labels'] as $index => $complaint):
-                            $count = $complaint_data['data'][$index];
-                            $percentage = $total_complaints > 0 ? round(($count / $total_complaints) * 100, 1) : 0;
+                        $total_complaints_for_print = 0;
+                        $complaint_table_data->data_seek(0);
+                        while ($row = $complaint_table_data->fetch_assoc()) {
+                            $total_complaints_for_print += $row['count'];
+                        }
+                        $complaint_table_data->data_seek(0);
+                        
+                        $i = 1;
+                        while ($row = $complaint_table_data->fetch_assoc()):
+                            if ($i > 10) break; // Limit to 10 in print
+                            $count = $row['count'];
+                            $percentage = $total_complaints_for_print > 0 ? round(($count / $total_complaints_for_print) * 100, 1) : 0;
                         ?>
                             <tr>
-                                <td style="padding: 10px; border: 1px solid #dee2e6; font-size: 12px;"><?php echo htmlspecialchars($complaint); ?></td>
+                                <td style="padding: 10px; border: 1px solid #dee2e6; font-size: 12px;"><?php echo htmlspecialchars($row['complaint_group']); ?></td>
                                 <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center; font-size: 12px; font-weight: bold;"><?php echo $count; ?></td>
                                 <td style="padding: 10px; border: 1px solid #dee2e6; text-align: center; font-size: 12px;"><?php echo $percentage; ?>%</td>
                             </tr>
-                        <?php endforeach; ?>
+                        <?php 
+                            $i++;
+                        endwhile; 
+                        ?>
                     </tbody>
                 </table>
             </div>
             <?php endif; ?>
             
             <!-- Recent Visits in Print -->
-            <?php if ($recent_visits->num_rows > 0): 
-                $recent_visits->data_seek(0); // Reset pointer
+            <?php 
+            // Get recent visits for print (limit 5)
+            $recent_visits_print = getRecentVisits($conn, $start_date, $end_date, 5);
+            if ($recent_visits_print->num_rows > 0): 
             ?>
             <div style="margin-bottom: 30px;">
                 <h3 style="color: #4361ee; margin-bottom: 15px; font-size: 18px; border-bottom: 2px solid #4361ee; padding-bottom: 5px;">Recent Clinic Visits</h3>
@@ -1345,8 +1650,7 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
                     <tbody>
                         <?php 
                         $i = 1;
-                        while ($row = $recent_visits->fetch_assoc()): 
-                            if ($i > 5) break; // Show only 5 in print
+                        while ($row = $recent_visits_print->fetch_assoc()): 
                         ?>
                             <tr>
                                 <td style="padding: 8px; border: 1px solid #dee2e6;"><?php echo htmlspecialchars($row['name']); ?></td>
@@ -1906,10 +2210,6 @@ $recent_visits = getRecentVisits($conn, $start_date, $end_date, 10);
         // Export to PDF Function (simplified version)
         function exportToPDF() {
             alert('PDF export functionality would typically require a server-side library like TCPDF or mPDF. This is a placeholder for the export feature.');
-            // In a real implementation, you would:
-            // 1. Submit a form to a PHP script that generates PDF
-            // 2. Use libraries like TCPDF, mPDF, or DomPDF
-            // 3. Return the PDF file for download
         }
 
         // Initialize all charts on page load

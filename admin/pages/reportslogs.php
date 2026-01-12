@@ -410,7 +410,7 @@ if ($all_grades_result && $all_grades_result->num_rows > 0) {
             <div class="filter-group">
                 <label for="reportType">Report Type</label>
                 <select id="reportType" class="filter-select">
-                    <option value="today" <?php echo $report_type == 'today' ? 'selected' : ''; ?>>Today's Report</option>
+                    <option value="today" <?php echo $report_type == 'today' ? 'selected' : ''; ?>>Today's Analysis</option>
                     <option value="weekly" <?php echo $report_type == 'weekly' ? 'selected' : ''; ?>>Weekly Analysis</option>
                     <option value="monthly" <?php echo $report_type == 'monthly' ? 'selected' : ''; ?>>Monthly Analysis</option>
                     <option value="yearly" <?php echo $report_type == 'yearly' ? 'selected' : ''; ?>>Yearly Analysis</option>

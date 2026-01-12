@@ -9,7 +9,7 @@ if ($conn->connect_error) {
 // Get filter parameters
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
 $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-t');
-$report_type = isset($_GET['report_type']) ? $_GET['report_type'] : 'Monthly Analysis';
+$report_type = isset($_GET['report_type']) ? $_GET['report_type'] : "Today's Analysis"; // Changed default
 $grade_section = isset($_GET['grade_section']) ? $_GET['grade_section'] : '';
 
 // Update dates based on report type (only if dates are default or empty)
@@ -20,6 +20,9 @@ if ((empty($_GET['start_date']) && empty($_GET['end_date'])) ||
     $startDateObj = new DateTime($end_date);
     
     switch($report_type) {
+        case "Today's Analysis":
+            $start_date = $end_date = date('Y-m-d');
+            break;
         case 'Weekly Analysis':
             $startDateObj->modify('-7 days');
             $start_date = $startDateObj->format('Y-m-d');
@@ -111,9 +114,29 @@ if (!empty($params)) {
 $stmt->execute();
 $result = $stmt->get_result();
 
-// Get all grade sections for filter dropdown
-$all_grades_sql = "SELECT DISTINCT grade_section FROM clinic_log WHERE grade_section IS NOT NULL AND grade_section != '' ORDER BY grade_section ASC";
-$all_grades_result = $conn->query($all_grades_sql);
+// Get all grade sections for filter dropdown - based on date filter
+$all_grades_sql = "SELECT DISTINCT grade_section FROM clinic_log WHERE grade_section IS NOT NULL AND grade_section != ''";
+$all_grades_params = array();
+$all_grades_types = "";
+$all_grades_where = "";
+
+if (!empty($start_date) && !empty($end_date)) {
+    $all_grades_where .= " AND date BETWEEN ? AND ?";
+    $all_grades_params[] = $start_date;
+    $all_grades_params[] = $end_date;
+    $all_grades_types .= "ss";
+}
+
+$all_grades_sql .= $all_grades_where . " ORDER BY grade_section ASC";
+
+if (!empty($all_grades_params)) {
+    $all_grades_stmt = $conn->prepare($all_grades_sql);
+    $all_grades_stmt->bind_param($all_grades_types, ...$all_grades_params);
+    $all_grades_stmt->execute();
+    $all_grades_result = $all_grades_stmt->get_result();
+} else {
+    $all_grades_result = $conn->query($all_grades_sql);
+}
 
 $today = date('F d, Y');
 
@@ -579,6 +602,7 @@ $image_exists = file_exists($server_path);
                             Report Type
                         </label>
                         <select id="reportType" name="report_type">
+                            <option value="Today's Analysis" <?php echo $report_type == "Today's Analysis" ? 'selected' : ''; ?>>Today's Analysis</option>
                             <option value="Weekly Analysis" <?php echo $report_type == 'Weekly Analysis' ? 'selected' : ''; ?>>Weekly Analysis</option>
                             <option value="Monthly Analysis" <?php echo $report_type == 'Monthly Analysis' ? 'selected' : ''; ?>>Monthly Analysis</option>
                             <option value="Yearly Analysis" <?php echo $report_type == 'Yearly Analysis' ? 'selected' : ''; ?>>Yearly Analysis</option>
@@ -612,6 +636,10 @@ $image_exists = file_exists($server_path);
                                     <?php echo htmlspecialchars($grade_row['grade_section']); ?>
                                 </option>
                             <?php endwhile; ?>
+                            <?php 
+                            // Reset the pointer for the result set if needed elsewhere
+                            $all_grades_result->data_seek(0);
+                            ?>
                         <?php endif; ?>
                     </select>
                 </div>
@@ -868,28 +896,24 @@ $image_exists = file_exists($server_path);
         
         // Only add grade_section if it's not empty
         if (gradeSection) {
-            url += `&grade_section=${gradeSection}`;
+            url += `&grade_section=${encodeURIComponent(gradeSection)}`;
         }
         
         window.location.href = url;
     }
     
     function resetFilters() {
+        // For reset, default to Today's Analysis
         const today = new Date();
-        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        const todayStr = today.toISOString().split('T')[0];
         
-        // Format dates as YYYY-MM-DD
-        const firstDayStr = firstDayOfMonth.toISOString().split('T')[0];
-        const lastDayStr = lastDayOfMonth.toISOString().split('T')[0];
-        
-        document.getElementById('startDate').value = firstDayStr;
-        document.getElementById('endDate').value = lastDayStr;
-        document.getElementById('reportType').value = 'Monthly Analysis';
+        document.getElementById('startDate').value = todayStr;
+        document.getElementById('endDate').value = todayStr;
+        document.getElementById('reportType').value = "Today's Analysis";
         document.getElementById('gradeSectionFilter').value = '';
         
-        // Redirect without grade_section parameter
-        window.location.href = `?start_date=${firstDayStr}&end_date=${lastDayStr}&report_type=Monthly Analysis&page=1`;
+        // Redirect with Today's Analysis
+        window.location.href = `?start_date=${todayStr}&end_date=${todayStr}&report_type=Today's Analysis&page=1`;
     }
     
     function changePage(newPage) {
@@ -903,7 +927,7 @@ $image_exists = file_exists($server_path);
         let url = `?start_date=${startDate}&end_date=${endDate}&report_type=${reportType}&page=${newPage}`;
         
         if (gradeSection) {
-            url += `&grade_section=${gradeSection}`;
+            url += `&grade_section=${encodeURIComponent(gradeSection)}`;
         }
         
         window.location.href = url;
@@ -918,17 +942,25 @@ $image_exists = file_exists($server_path);
         let url = `?start_date=${startDate}&end_date=${endDate}&report_type=${reportType}&page=1&per_page=${perPage}`;
         
         if (gradeSection) {
-            url += `&grade_section=${gradeSection}`;
+            url += `&grade_section=${encodeURIComponent(gradeSection)}`;
         }
         
         window.location.href = url;
     }
     
-    // Auto-update date range when report type changes
+    // Auto-update date range when report type changes - and refresh grade sections
     document.getElementById('reportType').addEventListener('change', function() {
         const reportType = this.value;
         const endDateInput = document.getElementById('endDate');
         const startDateInput = document.getElementById('startDate');
+        
+        if (reportType === "Today's Analysis") {
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            startDateInput.value = todayStr;
+            endDateInput.value = todayStr;
+            return;
+        }
         
         const endDate = new Date(endDateInput.value);
         let startDate = new Date(endDate);
@@ -953,6 +985,17 @@ $image_exists = file_exists($server_path);
                 endDateInput.value = lastDay.toISOString().split('T')[0];
             }
         }
+    });
+    
+    // Refresh grade sections when dates change manually
+    document.getElementById('startDate').addEventListener('change', function() {
+        // Clear grade section filter when date changes
+        document.getElementById('gradeSectionFilter').value = '';
+    });
+    
+    document.getElementById('endDate').addEventListener('change', function() {
+        // Clear grade section filter when date changes
+        document.getElementById('gradeSectionFilter').value = '';
     });
     
     // Search function
@@ -982,5 +1025,9 @@ $image_exists = file_exists($server_path);
 </script>
 
 <?php
+// Close the prepared statement for grade sections if it exists
+if (isset($all_grades_stmt)) {
+    $all_grades_stmt->close();
+}
 if(isset($conn)) $conn->close();
 ?>
