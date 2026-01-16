@@ -29,10 +29,11 @@ if ($report_type === 'today') {
 }
 
 /* ===========================
-   ✅ Pagination (UI)
+   ✅ Pagination (UI) + Persist per_page
    =========================== */
+$allowed_per_page = [10, 25, 50, 100];
 $records_per_page = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
-if (!in_array($records_per_page, [10, 25, 50, 100])) {
+if (!in_array($records_per_page, $allowed_per_page, true)) {
     $records_per_page = 10;
 }
 
@@ -58,7 +59,7 @@ $count_stmt->bind_param($count_types, ...$count_params);
 $count_stmt->execute();
 $count_result  = $count_stmt->get_result();
 $total_row     = $count_result->fetch_assoc();
-$total_records = $total_row['total'] ?? 0;
+$total_records = (int)($total_row['total'] ?? 0);
 $count_stmt->close();
 
 /* ===========================
@@ -71,7 +72,7 @@ $total_all_stmt->bind_param("ss", $start_date, $end_date);
 $total_all_stmt->execute();
 $total_all_result  = $total_all_stmt->get_result();
 $total_all_row     = $total_all_result->fetch_assoc();
-$total_all_records = $total_all_row['total_all'] ?? 0;
+$total_all_records = (int)($total_all_row['total_all'] ?? 0);
 $total_all_stmt->close();
 
 /* ===========================
@@ -97,13 +98,13 @@ $card_classes_stmt->bind_param($card_classes_types, ...$card_classes_params);
 $card_classes_stmt->execute();
 $card_classes_result = $card_classes_stmt->get_result();
 $card_classes_row = $card_classes_result->fetch_assoc();
-$total_classes = $card_classes_row['total_classes'] ?? 0;
+$total_classes = (int)($card_classes_row['total_classes'] ?? 0);
 $card_classes_stmt->close();
 
 /* ===========================
    ✅ Average Users Visits per Day
    =========================== */
-$days_diff     = max(1, ceil((strtotime($end_date) - strtotime($start_date)) / (60 * 60 * 24)) + 1);
+$days_diff     = max(1, (int)ceil((strtotime($end_date) - strtotime($start_date)) / (60 * 60 * 24)) + 1);
 $average_daily = $total_records > 0 ? round($total_records / $days_diff, 1) : 0;
 
 /* ===========================
@@ -111,7 +112,7 @@ $average_daily = $total_records > 0 ? round($total_records / $days_diff, 1) : 0;
    =========================== */
 $percentage_value = 0;
 if ($total_all_records > 0) {
-    $percentage_value = round(($total_records / $total_all_records) * 100);
+    $percentage_value = (int)round(($total_records / $total_all_records) * 100);
 }
 
 /* ===========================
@@ -191,8 +192,10 @@ $pie_stmt->close();
 /* ===========================
    ✅ Pagination fix
    =========================== */
-$total_pages = ($records_per_page > 0) ? ceil($total_records / $records_per_page) : 1;
-if ($page > $total_pages && $total_pages > 0) {
+$total_pages = ($records_per_page > 0) ? (int)ceil($total_records / $records_per_page) : 1;
+if ($total_pages < 1) $total_pages = 1;
+
+if ($page > $total_pages) {
     $page = $total_pages;
     $offset = ($page - 1) * $records_per_page;
 }
@@ -263,15 +266,8 @@ WHERE date BETWEEN ? AND ?
   AND grade_section != ''
 ";
 
-$gradeStatsParams = [];
-$gradeStatsTypes  = "";
-
-$gradeStatsParams[] = (int)$total_records;
-$gradeStatsTypes .= "i";
-
-$gradeStatsParams[] = $start_date;
-$gradeStatsParams[] = $end_date;
-$gradeStatsTypes .= "ss";
+$gradeStatsParams = [(int)$total_records, $start_date, $end_date];
+$gradeStatsTypes  = "iss";
 
 if (!empty($grade_section)) {
     $gradeStatsQuery .= " AND grade_section = ?";
@@ -340,10 +336,15 @@ $total_row_stmt->execute();
 $total_row_result = $total_row_stmt->get_result();
 $total_row_data   = $total_row_result->fetch_assoc();
 
-$total_unique_days  = $total_row_data['total_unique_days'] ?? 0;
-$total_unique_users = $total_row_data['total_unique_users'] ?? 0;
+$total_unique_days  = (int)($total_row_data['total_unique_days'] ?? 0);
+$total_unique_users = (int)($total_row_data['total_unique_users'] ?? 0);
 
 $total_row_stmt->close();
+
+/* ===========================
+   ✅ Helper: shown now
+   =========================== */
+$shown_now = max(0, min($records_per_page, $total_records - $offset));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -351,6 +352,7 @@ $total_row_stmt->close();
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Monthly Logs Report</title>
+
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="../assets/css/reportslogs.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -368,6 +370,8 @@ $total_row_stmt->close();
     visibility: hidden;
     position: absolute;
 }
+
+/* ✅ Background watermark */
 .report-background { position: relative; }
 .report-background::before{
     content:'';
@@ -385,6 +389,63 @@ $total_row_stmt->close();
 }
 .report-content{ position:relative; z-index:1; }
 
+/* ✅ Match the “Complaint page” positioning */
+.main-content.report-background{
+    width:100%;
+}
+.page-container{
+    width:100%;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 18px 18px 40px;
+}
+
+/* ✅ Table controls row matches design:
+   left: search + grade filter
+   right: show per page + (optional) actions
+*/
+.table-controls{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+}
+.controls-left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.controls-right{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-left:auto;
+}
+.per-page-wrap{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    white-space:nowrap;
+}
+.per-page-wrap select{
+    min-width:90px;
+}
+
+/* ✅ Pagination centered like the design */
+.pagination{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.pagination-info{
+    text-align:center;
+}
+
 @media print {
     @page { size: A4; margin: 0; }
     body{
@@ -395,6 +456,7 @@ $total_row_stmt->close();
         background: none !important;
     }
     .no-print{ display:none !important; }
+    .page-container{ max-width: none; padding:0; }
 }
 </style>
 </head>
@@ -403,339 +465,334 @@ $total_row_stmt->close();
 <div class="image-preloader"></div>
 
 <div class="main-content report-background">
-<div class="report-content">
+    <div class="report-content">
+        <div class="page-container">
 
-    <!-- Header -->
-    <div class="header no-print">
-        <h1><i class="fas fa-chart-bar"></i> Monthly Logs Reports </h1>
-        <p>Comprehensive analysis of clinic visits with charts and statistics</p>
-        <div class="table-actions">
-            <button class="action-btn print" onclick="printWholePage()">
-                <i class="fas fa-print"></i> Print Page
-            </button>
-        </div>
-    </div>
-
-    <!-- Date Range Filter -->
-    <div class="date-range-filter no-print">
-        <div class="filter-title">
-            <i class="fas fa-filter"></i> Filter Options
-        </div>
-
-        <div class="filter-row">
-            <div class="filter-group">
-                <label for="startDate">Start Date</label>
-                <input type="date" id="startDate" class="filter-input" value="<?php echo $start_date; ?>">
-            </div>
-
-            <div class="filter-group">
-                <label for="endDate">End Date</label>
-                <input type="date" id="endDate" class="filter-input" value="<?php echo $end_date; ?>">
-            </div>
-
-            <div class="filter-group">
-                <label for="reportType">Report Type</label>
-                <select id="reportType" class="filter-select">
-                    <option value="today"   <?php echo $report_type == 'today'   ? 'selected' : ''; ?>>Today's Report</option>
-                    <option value="weekly"  <?php echo $report_type == 'weekly'  ? 'selected' : ''; ?>>Weekly Analysis</option>
-                    <option value="monthly" <?php echo $report_type == 'monthly' ? 'selected' : ''; ?>>Monthly Analysis</option>
-                    <option value="yearly"  <?php echo $report_type == 'yearly'  ? 'selected' : ''; ?>>Yearly Analysis</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="filter-buttons">
-            <button class="btn btn-primary" onclick="applyFilters()">
-                <i class="fas fa-check"></i> Apply Filter
-            </button>
-            <button class="btn btn-secondary" onclick="resetDateFilter()">
-                <i class="fas fa-redo"></i> Reset
-            </button>
-        </div>
-    </div>
-
-    <!-- ✅ Stats Cards -->
-    <div class="stats-cards no-print">
-        <div class="stat-card total-classes">
-            <div class="stat-icon">
-                <i class="fas fa-school"></i>
-            </div>
-            <div class="stat-number"><?php echo (int)$total_classes; ?></div>
-            <div class="stat-label">Total Number of Classes</div>
-        </div>
-
-        <div class="stat-card average-daily">
-            <div class="stat-icon">
-                <i class="fas fa-calendar-day"></i>
-            </div>
-            <div class="stat-number"><?php echo $average_daily; ?></div>
-            <div class="stat-label">Average Users Visits</div>
-        </div>
-
-        <div class="stat-card average-weekly">
-            <div class="stat-icon">
-                <i class="fas fa-users"></i>
-            </div>
-            <div class="stat-number"><?php echo (int)$percentage_value; ?>%</div>
-            <div class="stat-label">Percentage</div>
-        </div>
-    </div>
-
-    <!-- ✅ Grade Level Statistics Table + PRINT -->
-    <div class="grade-stats-section no-print">
-        <div class="section-title" style="margin-bottom: 0; border-radius: 8px 8px 0 0;">
-            <div>
-                <i class="fas fa-graduation-cap"></i>
-                Grade Level Statistics for <?php echo date('F j, Y', strtotime($start_date)); ?> to <?php echo date('F j, Y', strtotime($end_date)); ?>
-                <?php if (!empty($grade_section)): ?>
-                    <span style="font-size: 14px; color: #eaf2ff; margin-left: 10px;">
-                        (Filtered by: <?php echo htmlspecialchars($grade_section); ?>)
-                    </span>
-                <?php endif; ?>
-            </div>
-            <div class="table-actions">
-                <button class="action-btn print" onclick="printGradeStats()">
-                    <i class="fas fa-print"></i> Print Grade Stats
-                </button>
-            </div>
-        </div>
-
-        <div class="table-container">
-            <table class="grade-stats-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Grade Level</th>
-                        <th>Total Numbers of Classes</th>
-                        <th>Total Numbers of Users</th>
-                        <th>Percentage</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (!empty($gradeStats)): ?>
-                        <?php $id = 1; ?>
-                        <?php foreach ($gradeStats as $stat): ?>
-                            <?php 
-                            $percentageNum = floatval(str_replace('%', '', $stat['percentage']));
-                            $percentageClass = 'percentage-low';
-                            if ($percentageNum > 20) {
-                                $percentageClass = 'percentage-high';
-                            } elseif ($percentageNum > 10) {
-                                $percentageClass = 'percentage-medium';
-                            }
-                            ?>
-                            <tr>
-                                <td><?php echo $id; ?></td>
-                                <td><strong><?php echo htmlspecialchars($stat['grade_level']); ?></strong></td>
-                                <td><?php echo (int)$stat['total_classes']; ?></td>
-                                <td><?php echo (int)$stat['total_users']; ?></td>
-                                <td class="<?php echo $percentageClass; ?>"><?php echo $stat['percentage']; ?></td>
-                            </tr>
-                            <?php $id++; ?>
-                        <?php endforeach; ?>
-
-                        <tr class="total-row">
-                            <td></td>
-                            <td><strong>TOTAL</strong></td>
-                            <td><strong><?php echo (int)$total_unique_days; ?></strong></td>
-                            <td><strong><?php echo (int)$total_unique_users; ?></strong></td>
-                            <td><strong><?php echo ($total_records > 0 ? '100.00' : '0.00'); ?>%</strong></td>
-                        </tr>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="5" style="text-align: center; padding: 40px; color: #7f8c8d;">
-                                No grade level statistics found for the selected period.
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Chart Section -->
-    <div class="chart-section no-print">
-        <div class="chart-title">
-            <i class="fas fa-chart-line"></i> Statistics Report with Charts
-        </div>
-
-        <div class="charts-container">
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3><i class="fas fa-chart-line"></i> Daily Visits Trend</h3>
-                    <span class="table-info"><?php echo count($chart_data); ?> days analyzed</span>
-                </div>
-                <div class="chart-wrapper">
-                    <canvas id="dailyVisitsChart"></canvas>
+            <!-- Header -->
+            <div class="header no-print">
+                <h1><i class="fas fa-clipboard-list"></i> Records Logs Reports </h1>
+                <p>Comprehensive analysis of clinic visits with charts and statistics</p>
+                <div class="table-actions">
+                    <button class="action-btn print" onclick="printWholePage()">
+                        <i class="fas fa-print"></i> Print Page
+                    </button>
                 </div>
             </div>
 
-            <div class="chart-card">
-                <div class="chart-header">
-                    <h3><i class="fas fa-chart-pie"></i> Distribution by Class</h3>
-                    <span class="table-info">Top <?php echo count($pie_labels); ?> classes</span>
+            <!-- Date Range Filter -->
+            <div class="date-range-filter no-print">
+                <div class="filter-title">
+                    <i class="fas fa-filter"></i> Filter Options
                 </div>
-                <div class="chart-wrapper">
-                    <canvas id="classDistributionChart"></canvas>
-                </div>
-                <?php if(!empty($pie_labels)): ?>
-                <div class="chart-legend">
-                    <?php foreach($pie_labels as $index => $label): ?>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: <?php echo $pie_colors[$index]; ?>"></div>
-                        <span><?php echo htmlspecialchars($label); ?> (<?php echo (int)$pie_data[$index]; ?>)</span>
+
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="startDate">Start Date</label>
+                        <input type="date" id="startDate" class="filter-input" value="<?php echo htmlspecialchars($start_date); ?>">
                     </div>
-                    <?php endforeach; ?>
+
+                    <div class="filter-group">
+                        <label for="endDate">End Date</label>
+                        <input type="date" id="endDate" class="filter-input" value="<?php echo htmlspecialchars($end_date); ?>">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="reportType">Report Type</label>
+                        <select id="reportType" class="filter-select">
+                            <option value="today"   <?php echo $report_type == 'today'   ? 'selected' : ''; ?>>Today's Report</option>
+                            <option value="weekly"  <?php echo $report_type == 'weekly'  ? 'selected' : ''; ?>>Weekly Analysis</option>
+                            <option value="monthly" <?php echo $report_type == 'monthly' ? 'selected' : ''; ?>>Monthly Analysis</option>
+                            <option value="yearly"  <?php echo $report_type == 'yearly'  ? 'selected' : ''; ?>>Yearly Analysis</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-buttons">
+                    <button class="btn btn-primary" onclick="applyFilters()">
+                        <i class="fas fa-check"></i> Apply Filter
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetDateFilter()">
+                        <i class="fas fa-redo"></i> Reset
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-cards no-print">
+                <div class="stat-card total-classes">
+                    <div class="stat-icon"><i class="fas fa-school"></i></div>
+                    <div class="stat-number"><?php echo (int)$total_classes; ?></div>
+                    <div class="stat-label">Total Number of Classes</div>
+                </div>
+
+                <div class="stat-card average-daily">
+                    <div class="stat-icon"><i class="fas fa-calendar-day"></i></div>
+                    <div class="stat-number"><?php echo $average_daily; ?></div>
+                    <div class="stat-label">Average Users Visits</div>
+                </div>
+
+                <div class="stat-card average-weekly">
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
+                    <div class="stat-number"><?php echo (int)$percentage_value; ?>%</div>
+                    <div class="stat-label">Percentage</div>
+                </div>
+            </div>
+
+            <!-- Grade Level Statistics Table -->
+            <div class="grade-stats-section no-print">
+                <div class="section-title" style="margin-bottom: 0; border-radius: 8px 8px 0 0;">
+                    <div>
+                        <i class="fas fa-graduation-cap"></i>
+                        Grade Level Statistics for <?php echo date('F j, Y', strtotime($start_date)); ?> to <?php echo date('F j, Y', strtotime($end_date)); ?>
+                        <?php if (!empty($grade_section)): ?>
+                            <span style="font-size: 14px; color: #eaf2ff; margin-left: 10px;">
+                                (Filtered by: <?php echo htmlspecialchars($grade_section); ?>)
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="table-actions">
+                        <button class="action-btn print" onclick="printGradeStats()">
+                            <i class="fas fa-print"></i> Print Grade Stats
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="grade-stats-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Grade Level</th>
+                                <th>Total Numbers of Classes</th>
+                                <th>Total Numbers of Users</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php if (!empty($gradeStats)): ?>
+                            <?php $id = 1; ?>
+                            <?php foreach ($gradeStats as $stat): ?>
+                                <?php
+                                $percentageNum = (float)str_replace('%', '', $stat['percentage']);
+                                $percentageClass = 'percentage-low';
+                                if ($percentageNum > 20) $percentageClass = 'percentage-high';
+                                elseif ($percentageNum > 10) $percentageClass = 'percentage-medium';
+                                ?>
+                                <tr>
+                                    <td><?php echo $id++; ?></td>
+                                    <td><strong><?php echo htmlspecialchars($stat['grade_level']); ?></strong></td>
+                                    <td><?php echo (int)$stat['total_classes']; ?></td>
+                                    <td><?php echo (int)$stat['total_users']; ?></td>
+                                    <td class="<?php echo $percentageClass; ?>"><?php echo htmlspecialchars($stat['percentage']); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+
+                            <tr class="total-row">
+                                <td></td>
+                                <td><strong>TOTAL</strong></td>
+                                <td><strong><?php echo (int)$total_unique_days; ?></strong></td>
+                                <td><strong><?php echo (int)$total_unique_users; ?></strong></td>
+                                <td><strong><?php echo ($total_records > 0 ? '100.00' : '0.00'); ?>%</strong></td>
+                            </tr>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="5" style="text-align:center; padding:40px; color:#7f8c8d;">
+                                    No grade level statistics found for the selected period.
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="chart-section no-print">
+                <div class="chart-title">
+                    <i class="fas fa-chart-line"></i> Statistics Report with Charts
+                </div>
+
+                <div class="charts-container">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-line"></i> Daily Visits Trend</h3>
+                            <span class="table-info"><?php echo count($chart_data); ?> days analyzed</span>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="dailyVisitsChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3><i class="fas fa-chart-pie"></i> Distribution by Class</h3>
+                            <span class="table-info">Top <?php echo count($pie_labels); ?> classes</span>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="classDistributionChart"></canvas>
+                        </div>
+
+                        <?php if(!empty($pie_labels)): ?>
+                        <div class="chart-legend">
+                            <?php foreach($pie_labels as $index => $label): ?>
+                            <div class="legend-item">
+                                <div class="legend-color" style="background-color: <?php echo $pie_colors[$index]; ?>"></div>
+                                <span><?php echo htmlspecialchars($label); ?> (<?php echo (int)$pie_data[$index]; ?>)</span>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Header -->
+            <div class="section-title" style="margin-bottom: 0; border-radius: 8px 8px 0 0;">
+                <div>
+                    <i class="fas fa-calendar-week"></i>
+                    Analysis for <?php echo date('F j, Y', strtotime($start_date)); ?> to <?php echo date('F j, Y', strtotime($end_date)); ?>
+                    <?php if (!empty($grade_section)): ?>
+                        <span style="font-size: 14px; color: #666; margin-left: 10px;">
+                            (Filtered by: <?php echo htmlspecialchars($grade_section); ?>)
+                        </span>
+                    <?php endif; ?>
+                </div>
+                <div class="table-actions">
+                    <button class="action-btn print" onclick="printTable()">
+                        <i class="fas fa-print"></i> Print Table
+                    </button>
+                </div>
+            </div>
+
+            <!-- Logs Table -->
+            <div class="table-container">
+                <div class="table-controls no-print">
+                    <div class="controls-left">
+                        <input type="text" id="searchInput" class="search-box" placeholder="Search logs...">
+
+                        <select id="gradeSectionFilter" class="grade-section-select">
+                            <option value="">All Grades & Sections</option>
+                            <?php if(!empty($grade_sections)): ?>
+                                <?php foreach($grade_sections as $section): ?>
+                                    <option value="<?php echo htmlspecialchars($section['grade_section']); ?>"
+                                        <?php echo $section['grade_section'] == $grade_section ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($section['grade_section']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <option value="" disabled>No grade sections found for selected date range</option>
+                            <?php endif; ?>
+                        </select>
+                    </div>
+
+                    <div class="controls-right">
+                        <div class="per-page-wrap">
+                            <span style="font-weight:600;color:#4b5563;">Show:</span>
+                            <select id="recordsPerPageSelect" onchange="changeRecordsPerPage(this.value)">
+                                <option value="10"  <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10</option>
+                                <option value="25"  <?php echo $records_per_page == 25 ? 'selected' : ''; ?>>25</option>
+                                <option value="50"  <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50</option>
+                                <option value="100" <?php echo $records_per_page == 100 ? 'selected' : ''; ?>>100</option>
+                            </select>
+                        </div>
+
+                        <div class="table-info">
+                            <?php if (!empty($grade_section)): ?>
+                                Showing <?php echo $shown_now; ?> of <?php echo (int)$total_records; ?> logs for <?php echo htmlspecialchars($grade_section); ?>
+                            <?php else: ?>
+                                Showing <?php echo $shown_now; ?> of <?php echo (int)$total_records; ?> logs
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <?php if($logs_result && $logs_result->num_rows > 0): ?>
+                    <table id="logsTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Clinic ID</th>
+                                <th>Name</th>
+                                <th>Grade & Section</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php $num = $start_number; while($row = $logs_result->fetch_assoc()): ?>
+                            <tr>
+                                <td><?php echo $num++; ?></td>
+                                <td><?php echo htmlspecialchars($row['clinic_id']); ?></td>
+                                <td><?php echo htmlspecialchars($row['name']); ?></td>
+                                <td><?php echo htmlspecialchars($row['grade_section']); ?></td>
+                                <td><?php echo date('Y-m-d', strtotime($row['date'])); ?></td>
+                                <td><?php echo date('h:i A', strtotime($row['time'])); ?></td>
+                            </tr>
+                            <?php endwhile; ?>
+                        </tbody>
+                    </table>
+                    <?php else: ?>
+                    <div class="no-data">
+                        <i class="fas fa-clipboard-list"></i>
+                        <h3>No logs found for selected filters</h3>
+                        <p>Try selecting a different date range or section.</p>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Pagination -->
+                <?php if($total_pages > 1): ?>
+                <div class="pagination no-print">
+                    <button class="pagination-btn <?php echo $page <= 1 ? 'disabled' : ''; ?>"
+                            onclick="changePage(<?php echo $page - 1; ?>)"
+                            <?php echo $page <= 1 ? 'disabled' : ''; ?>>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+
+                    <div class="page-numbers">
+                        <?php if ($page > 3): ?>
+                            <button class="page-number" onclick="changePage(1)">1</button>
+                            <?php if ($page > 4): ?>
+                                <span class="page-number" style="border:none;background:transparent;cursor:default;">...</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
+
+                        <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
+                            <button class="page-number <?php echo $i == $page ? 'active' : ''; ?>"
+                                    onclick="changePage(<?php echo $i; ?>)">
+                                <?php echo $i; ?>
+                            </button>
+                        <?php endfor; ?>
+
+                        <?php if ($page < $total_pages - 2): ?>
+                            <?php if ($page < $total_pages - 3): ?>
+                                <span class="page-number" style="border:none;background:transparent;cursor:default;">...</span>
+                            <?php endif; ?>
+                            <button class="page-number" onclick="changePage(<?php echo $total_pages; ?>)">
+                                <?php echo $total_pages; ?>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+
+                    <button class="pagination-btn <?php echo $page >= $total_pages ? 'disabled' : ''; ?>"
+                            onclick="changePage(<?php echo $page + 1; ?>)"
+                            <?php echo $page >= $total_pages ? 'disabled' : ''; ?>>
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <div class="pagination-info no-print">
+                    Page <?php echo (int)$page; ?> of <?php echo (int)$total_pages; ?> •
+                    Records <?php echo min($offset + 1, $total_records); ?>-<?php echo min($offset + $records_per_page, $total_records); ?>
+                    of <?php echo (int)$total_records; ?>
                 </div>
                 <?php endif; ?>
+
             </div>
+
         </div>
     </div>
-
-    <!-- Logs header -->
-    <div class="section-title" style="margin-bottom: 0; border-radius: 8px 8px 0 0;">
-        <div>
-            <i class="fas fa-calendar-week"></i>
-            Analysis for <?php echo date('F j, Y', strtotime($start_date)); ?> to <?php echo date('F j, Y', strtotime($end_date)); ?>
-            <?php if (!empty($grade_section)): ?>
-                <span style="font-size: 14px; color: #666; margin-left: 10px;">
-                    (Filtered by: <?php echo htmlspecialchars($grade_section); ?>)
-                </span>
-            <?php endif; ?>
-        </div>
-        <div class="table-actions">
-            <button class="action-btn print" onclick="printTable()">
-                <i class="fas fa-print"></i> Print Table
-            </button>
-        </div>
-    </div>
-
-    <!-- Logs Table -->
-    <div class="table-container">
-        <div class="table-controls no-print">
-            <div class="search-section">
-                <input type="text" id="searchInput" class="search-box" placeholder="Search logs...">
-                <select id="gradeSectionFilter" class="grade-section-select">
-                    <option value="">All Grades & Sections</option>
-                    <?php if(!empty($grade_sections)): ?>
-                        <?php foreach($grade_sections as $section): ?>
-                            <option value="<?php echo htmlspecialchars($section['grade_section']); ?>"
-                                <?php echo $section['grade_section'] == $grade_section ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($section['grade_section']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <option value="" disabled>No grade sections found for selected date range</option>
-                    <?php endif; ?>
-                </select>
-            </div>
-
-            <div class="table-info">
-                <?php if (!empty($grade_section)): ?>
-                    Showing <?php echo max(0, min($records_per_page, $total_records - $offset)); ?> of <?php echo (int)$total_records; ?> logs for <?php echo htmlspecialchars($grade_section); ?>
-                    (<?php echo (int)$records_per_page; ?> per page)
-                <?php else: ?>
-                    Showing <?php echo max(0, min($records_per_page, $total_records - $offset)); ?> of <?php echo (int)$total_records; ?> logs
-                    (<?php echo (int)$records_per_page; ?> per page)
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <div class="table-wrapper">
-            <?php if($logs_result && $logs_result->num_rows > 0): ?>
-            <table id="logsTable">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Clinic ID</th>
-                        <th>Name</th>
-                        <th>Grade & Section</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php $num = $start_number; while($row = $logs_result->fetch_assoc()): ?>
-                    <tr>
-                        <td><?php echo $num++; ?></td>
-                        <td><?php echo htmlspecialchars($row['clinic_id']); ?></td>
-                        <td><?php echo htmlspecialchars($row['name']); ?></td>
-                        <td><?php echo htmlspecialchars($row['grade_section']); ?></td>
-                        <td><?php echo date('Y-m-d', strtotime($row['date'])); ?></td>
-                        <td><?php echo date('h:i A', strtotime($row['time'])); ?></td>
-                    </tr>
-                    <?php endwhile; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-            <div class="no-data">
-                <i class="fas fa-clipboard-list"></i>
-                <h3>No logs found for selected filters</h3>
-                <p>Try selecting a different date range or section.</p>
-            </div>
-            <?php endif; ?>
-        </div>
-
-        <!-- Pagination -->
-        <?php if($total_pages > 1): ?>
-        <div class="pagination no-print">
-            <button class="pagination-btn <?php echo $page <= 1 ? 'disabled' : ''; ?>"
-                    onclick="changePage(<?php echo $page - 1; ?>)"
-                    <?php echo $page <= 1 ? 'disabled' : ''; ?>>
-                <i class="fas fa-chevron-left"></i> Previous
-            </button>
-
-            <div class="page-numbers">
-                <?php if ($page > 3): ?>
-                    <button class="page-number" onclick="changePage(1)">1</button>
-                    <?php if ($page > 4): ?>
-                        <span class="page-number" style="border: none; background: transparent;">...</span>
-                    <?php endif; ?>
-                <?php endif; ?>
-
-                <?php for ($i = max(1, $page - 2); $i <= min($total_pages, $page + 2); $i++): ?>
-                    <button class="page-number <?php echo $i == $page ? 'active' : ''; ?>"
-                            onclick="changePage(<?php echo $i; ?>)">
-                        <?php echo $i; ?>
-                    </button>
-                <?php endfor; ?>
-
-                <?php if ($page < $total_pages - 2): ?>
-                    <?php if ($page < $total_pages - 3): ?>
-                        <span class="page-number" style="border: none; background: transparent;">...</span>
-                    <?php endif; ?>
-                    <button class="page-number" onclick="changePage(<?php echo $total_pages; ?>)">
-                        <?php echo $total_pages; ?>
-                    </button>
-                <?php endif; ?>
-            </div>
-
-            <button class="pagination-btn <?php echo $page >= $total_pages ? 'disabled' : ''; ?>"
-                    onclick="changePage(<?php echo $page + 1; ?>)"
-                    <?php echo $page >= $total_pages ? 'disabled' : ''; ?>>
-                Next <i class="fas fa-chevron-right"></i>
-            </button>
-
-            <div class="records-per-page">
-                <span>Show:</span>
-                <select onchange="changeRecordsPerPage(this.value)" id="recordsPerPageSelect">
-                    <option value="10" <?php echo $records_per_page == 10 ? 'selected' : ''; ?>>10</option>
-                    <option value="25" <?php echo $records_per_page == 25 ? 'selected' : ''; ?>>25</option>
-                    <option value="50" <?php echo $records_per_page == 50 ? 'selected' : ''; ?>>50</option>
-                    <option value="100" <?php echo $records_per_page == 100 ? 'selected' : ''; ?>>100</option>
-                </select>
-                <span>per page</span>
-            </div>
-        </div>
-
-        <div class="pagination-info no-print">
-            Page <?php echo (int)$page; ?> of <?php echo (int)$total_pages; ?> •
-            Records <?php echo min($offset + 1, $total_records); ?>-<?php echo min($offset + $records_per_page, $total_records); ?> of <?php echo (int)$total_records; ?>
-        </div>
-        <?php endif; ?>
-    </div>
-
-</div>
 </div>
 
 <script>
@@ -747,97 +804,120 @@ const pieColors   = <?php echo json_encode($pie_colors); ?>;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Daily Visits Line Chart
-    const dailyCtx = document.getElementById('dailyVisitsChart').getContext('2d');
-    new Chart(dailyCtx, {
-        type: 'line',
-        data: {
-            labels: chartLabels,
-            datasets: [{
-                label: 'Daily Visits',
-                data: chartData,
-                borderColor: '#4361ee',
-                backgroundColor: 'rgba(67, 97, 238, 0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                pointBackgroundColor: '#4361ee',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-            scales: {
-                y: { beginAtZero: true, title: { display: true, text: 'Number of Visits' }, grid: { color: 'rgba(0,0,0,0.05)' } },
-                x: { title: { display: true, text: 'Date' }, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { maxRotation: 45, minRotation: 45 } }
+    const daily = document.getElementById('dailyVisitsChart');
+    if (daily) {
+        const dailyCtx = daily.getContext('2d');
+        new Chart(dailyCtx, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Daily Visits',
+                    data: chartData,
+                    borderColor: '#4361ee',
+                    backgroundColor: 'rgba(67, 97, 238, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#4361ee',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Number of Visits' }, grid: { color: 'rgba(0,0,0,0.05)' } },
+                    x: { title: { display: true, text: 'Date' }, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { maxRotation: 45, minRotation: 45 } }
+                }
             }
-        }
-    });
+        });
+    }
 
     // Pie Chart
-    const pieCtx = document.getElementById('classDistributionChart').getContext('2d');
-    new Chart(pieCtx, {
-        type: 'doughnut',
-        data: { labels: pieLabels, datasets: [{ data: pieData, backgroundColor: pieColors, borderColor: '#fff', borderWidth: 2, hoverOffset: 15 }] },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const label = context.label || '';
-                            const value = context.parsed || 0;
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = total ? Math.round((value / total) * 100) : 0;
-                            return `${label}: ${value} visits (${percentage}%)`;
+    const pie = document.getElementById('classDistributionChart');
+    if (pie) {
+        const pieCtx = pie.getContext('2d');
+        new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: pieLabels,
+                datasets: [{
+                    data: pieData,
+                    backgroundColor: pieColors,
+                    borderColor: '#fff',
+                    borderWidth: 2,
+                    hoverOffset: 15
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total ? Math.round((value / total) * 100) : 0;
+                                return `${label}: ${value} visits (${percentage}%)`;
+                            }
                         }
                     }
-                }
-            },
-            cutout: '60%'
-        }
-    });
+                },
+                cutout: '60%'
+            }
+        });
+    }
 
-    // Search
+    // Search (client-side)
     const searchInput = document.getElementById('searchInput');
-    const rows = document.querySelectorAll('#logsTable tbody tr');
-    if (searchInput && rows.length > 0) {
+    const table = document.getElementById('logsTable');
+    if (searchInput && table) {
+        const rows = table.querySelectorAll('tbody tr');
         searchInput.addEventListener('keyup', () => {
             const value = searchInput.value.toLowerCase();
             rows.forEach(row => row.style.display = row.innerText.toLowerCase().includes(value) ? '' : 'none');
         });
     }
 
-    // Auto apply on select
+    // Auto apply grade/section
     const gradeSectionFilter = document.getElementById('gradeSectionFilter');
     if (gradeSectionFilter) {
         gradeSectionFilter.addEventListener('change', function() {
-            setTimeout(() => { applyFilters(); }, 100);
+            setTimeout(() => { applyFilters(); }, 60);
         });
     }
-
 });
 
 /* ===========================
-   ✅ FILTERS
+   ✅ FILTERS (keep per_page persistent)
    =========================== */
-function applyFilters() {
+function getPerPage() {
+    const sel = document.getElementById('recordsPerPageSelect');
+    return sel ? sel.value : '10';
+}
+
+function buildUrl(page = 1, perPage = null) {
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
     const reportType = document.getElementById('reportType').value;
-    const gradeSection = document.getElementById('gradeSectionFilter').value;
-    const perPageSelect = document.getElementById('recordsPerPageSelect');
-    const currentPerPage = perPageSelect ? perPageSelect.value : 10;
+    const gradeSection = document.getElementById('gradeSectionFilter') ? document.getElementById('gradeSectionFilter').value : '';
+    const per = perPage !== null ? perPage : getPerPage();
 
-    let url = `?start_date=${startDate}&end_date=${endDate}&report_type=${reportType}&page=1&per_page=${currentPerPage}`;
+    let url = `?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&report_type=${encodeURIComponent(reportType)}&page=${page}&per_page=${encodeURIComponent(per)}`;
     if (gradeSection) url += `&grade_section=${encodeURIComponent(gradeSection)}`;
-    window.location.href = url;
+    return url;
+}
+
+function applyFilters() {
+    window.location.href = buildUrl(1);
 }
 
 function resetDateFilter() {
@@ -846,39 +926,49 @@ function resetDateFilter() {
     document.getElementById('endDate').value = today;
     document.getElementById('reportType').value = 'today';
     if (document.getElementById('gradeSectionFilter')) document.getElementById('gradeSectionFilter').value = '';
-    const perPageSelect = document.getElementById('recordsPerPageSelect');
-    if (perPageSelect) perPageSelect.value = '10';
-    applyFilters();
+    if (document.getElementById('recordsPerPageSelect')) document.getElementById('recordsPerPageSelect').value = '10';
+    window.location.href = buildUrl(1, '10');
 }
 
 function changePage(newPage) {
     if (newPage < 1 || newPage > <?php echo (int)$total_pages; ?>) return;
-
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-    const reportType = document.getElementById('reportType').value;
-    const gradeSection = document.getElementById('gradeSectionFilter').value;
-    const perPageSelect = document.getElementById('recordsPerPageSelect');
-    const currentPerPage = perPageSelect ? perPageSelect.value : 10;
-
-    let url = `?start_date=${startDate}&end_date=${endDate}&report_type=${reportType}&page=${newPage}&per_page=${currentPerPage}`;
-    if (gradeSection) url += `&grade_section=${encodeURIComponent(gradeSection)}`;
-    window.location.href = url;
+    window.location.href = buildUrl(newPage);
 }
 
 function changeRecordsPerPage(perPage) {
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-    const reportType = document.getElementById('reportType').value;
-    const gradeSection = document.getElementById('gradeSectionFilter').value;
-
-    let url = `?start_date=${startDate}&end_date=${endDate}&report_type=${reportType}&page=1&per_page=${perPage}`;
-    if (gradeSection) url += `&grade_section=${encodeURIComponent(gradeSection)}`;
-    window.location.href = url;
+    window.location.href = buildUrl(1, perPage);
 }
 
+/* Auto update date range based on reportType */
+document.getElementById('reportType').addEventListener('change', function() {
+    const reportType = this.value;
+    const today = new Date();
+    const formatDate = (d) => d.toISOString().split('T')[0];
+
+    let startDate = new Date(today);
+    let endDate = new Date(today);
+
+    switch(reportType) {
+        case 'today':
+            break;
+        case 'weekly':
+            startDate.setDate(today.getDate() - 7);
+            break;
+        case 'monthly':
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            break;
+        case 'yearly':
+            startDate = new Date(today.getFullYear(), 0, 1);
+            startDate.setFullYear(today.getFullYear() - 1);
+            break;
+    }
+
+    document.getElementById('startDate').value = formatDate(startDate);
+    document.getElementById('endDate').value = formatDate(endDate);
+});
+
 /* ===========================
-   ✅ PRINT HELPERS
+   ✅ PRINT HELPERS (unchanged)
    =========================== */
 function buildPagedTableHTML(tableEl, rowsPerPage = 10) {
     const thead = tableEl.querySelector('thead')?.outerHTML || '';
@@ -974,7 +1064,6 @@ function printBaseStyles(bgUrl) {
     `;
 }
 
-/* ✅ Print Grade Stats only */
 function printGradeStats() {
     const gradeStatsTable = document.querySelector('.grade-stats-table');
     if (!gradeStatsTable) { alert('Grade statistics table not found'); return; }
@@ -1031,7 +1120,6 @@ function printGradeStats() {
     win.document.close();
 }
 
-/* ✅ Print Clinic Visits Log only (10 rows per page + excess goes next pages) */
 function printTable() {
     const table = document.getElementById('logsTable');
     if (!table) { alert('Table not found'); return; }
@@ -1094,7 +1182,6 @@ function printTable() {
     win.document.close();
 }
 
-/* ✅ Print Whole Page (Grade Stats + Logs, logs split 10 per page) */
 function printWholePage() {
     const startDate = document.getElementById('startDate').value;
     const endDate = document.getElementById('endDate').value;
@@ -1110,7 +1197,6 @@ function printWholePage() {
 
     const logPages = table ? buildPagedTableHTML(table, 10) : [];
 
-    // Page 1: Grade Stats
     let htmlPages = `
         <div class="print-page">
             <div class="print-content">
@@ -1134,7 +1220,6 @@ function printWholePage() {
         </div>
     `;
 
-    // Logs pages (10 rows each)
     if (logPages.length) {
         htmlPages += logPages.map((pageTable, idx) => `
             <div class="print-page">
@@ -1165,7 +1250,7 @@ function printWholePage() {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Monthly Logs Report - ${startDateFormatted} to ${endDateFormatted}</title>
+            <title>Monthly Logs Report</title>
             <style>${printBaseStyles(bgUrl)}</style>
         </head>
         <body>
@@ -1173,7 +1258,7 @@ function printWholePage() {
             <script>
                 window.onload = function(){
                     window.print();
-                    window.onafterprint = function(){ window.close(); }
+                    window.onaffterprint = function(){ window.close(); }
                 }
             <\/script>
         </body>
@@ -1181,38 +1266,9 @@ function printWholePage() {
     `);
     win.document.close();
 }
-
-/* Auto update date range */
-document.getElementById('reportType').addEventListener('change', function() {
-    const reportType = this.value;
-    const today = new Date();
-    const formatDate = (date) => date.toISOString().split('T')[0];
-
-    let startDate = new Date(today);
-    let endDate = new Date(today);
-
-    switch(reportType) {
-        case 'today':
-            break;
-        case 'weekly':
-            startDate.setDate(today.getDate() - 7);
-            break;
-        case 'monthly':
-            startDate.setMonth(today.getMonth() - 1);
-            startDate.setDate(1);
-            break;
-        case 'yearly':
-            startDate.setFullYear(today.getFullYear() - 1);
-            startDate.setMonth(0);
-            startDate.setDate(1);
-            break;
-    }
-
-    document.getElementById('startDate').value = formatDate(startDate);
-    document.getElementById('endDate').value = formatDate(endDate);
-});
 </script>
 
 </body>
 </html>
+<?php if(isset($logs_stmt)) $logs_stmt->close(); ?>
 <?php if(isset($conn)) $conn->close(); ?>
