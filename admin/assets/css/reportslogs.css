@@ -1,3 +1,4 @@
+#reportslogs-data { display: none; }
 .chart-section {
     background: white;
     padding: 25px;
@@ -433,11 +434,11 @@ body.sidebar-collapsed .main-content {
 }
 
 body:not(.sidebar-collapsed) .main-content {
-    margin-left: 250px; /* Adjust this based on your sidebar width */
-    width: calc(100% - 250px);
+    margin-left: 280px; /* Adjust this based on your sidebar width (280px) */
+    width: calc(100% - 280px);
 }
 
-/* If your sidebar is not 250px, adjust the value above to match your sidebar width */
+/* If your sidebar is not 250px, adjust the value above to match your sidebar width (280px) */
 
 .main-content {
     padding: 25px;
@@ -884,7 +885,7 @@ body:not(.sidebar-collapsed) .main-content {
     cursor: pointer;
     transition: all 0.3s;
     color: #333;
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-image: var(--report-bg-url);
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 16px;
@@ -1317,3 +1318,103 @@ tbody tr:hover {
     color: #27ae60;
     font-weight: bold;
 }
+
+.image-preloader {
+    background-image: var(--report-bg-url);
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    position: absolute;
+}
+
+/* ✅ Background watermark */
+.report-background { position: relative; }
+.report-background::before{
+    content:'';
+    position:absolute;
+    inset:0;
+    <?php if ($image_exists): ?>
+    background-image: var(--report-bg-url);
+    <?php endif; ?>
+    background-size: contain;
+    background-position: 20px 20px;
+    background-repeat:no-repeat;
+    opacity:0.10;
+    z-index:0;
+    pointer-events:none;
+}
+.report-content{ position:relative; z-index:1; }
+
+/* ✅ Match the “Complaint page” positioning */
+.main-content.report-background{
+    width:100%;
+}
+.page-container{
+    width:100%;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 18px 18px 40px;
+}
+
+/* ✅ Table controls row matches design:
+   left: search + grade filter
+   right: show per page + (optional) actions
+*/
+.table-controls{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+}
+.controls-left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.controls-right{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-left:auto;
+}
+.per-page-wrap{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    white-space:nowrap;
+}
+.per-page-wrap select{
+    min-width:90px;
+}
+
+/* ✅ Pagination centered like the design */
+.pagination{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+.pagination-info{
+    text-align:center;
+}
+
+@media print {
+    @page { size: A4; margin: 0; }
+    body{
+        margin:0 !important;
+        padding:0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background: none !important;
+    }
+    .no-print{ display:none !important; }
+    .page-container{ max-width: none; padding:0; }
+}
+
+
+

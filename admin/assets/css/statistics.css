@@ -13,7 +13,7 @@
 
         /* Main content area with sidebar offset */
         .main-content {
-            margin-left: 250px;
+            margin-left: 280px;
             padding: 20px;
             transition: all 0.3s;
         }
@@ -685,3 +685,7 @@
             color: white;
             border-color: #4361ee;
         }
+ #statistics-data {
+            display: none;
+        }
+

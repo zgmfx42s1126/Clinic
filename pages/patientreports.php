@@ -38,73 +38,18 @@ $image_exists = file_exists($server_path);
     
     <link rel="preload" as="image" href="<?php echo $web_path; ?>">
 
-    <link rel="stylesheet" href="../assets/css/patient.css">
+    <link rel="stylesheet" href="/clinic/admin/assets/css/patient.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <style>
-        
-        .page {
-            width: 210mm;
-            min-height: 297mm;
-            padding: 20mm;
-            margin: 10mm auto;
-            background-color: white;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            position: relative;
-            
-            background-image: url('<?php echo $web_path; ?>'); 
-            background-size: cover; 
-            background-position: center;
-            background-repeat: no-repeat;
-        }
-
-        .print-template {
-            display: none;
-        }
-
-        @media print {
-            @page {
-                size: A4;
-                margin: 0;
-            }
-
-            body {
-                background: none;
-                margin: 0;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-
-            .main-content, .sidebar, .header, .table-controls, .no-print {
-                display: none !important;
-            }
-
-            .print-template {
-                display: block !important;
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                visibility: visible;
-            }
-
-            .page {
-                width: 100%;
-                height: 100%;
-                margin: 0;
-                box-shadow: none;
-                
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-                background-image: url('<?php echo $web_path; ?>') !important; 
-            }
-        }
-    </style>
+        <link rel="stylesheet" href="/clinic/assets/css/patientreports.css">
 </head>
 <body>
 
-    <div style="background-image: url('<?php echo $web_path; ?>'); width:0; height:0; overflow:hidden; visibility:hidden; position:absolute;"></div>
+    <div
+        id="report-data"
+        data-report-bg-url="<?php echo htmlspecialchars($image_exists ? $web_path : '', ENT_QUOTES); ?>"
+    ></div>
+    <div class="image-preloader"></div>
 
     <div class="main-content no-print">
         <div class="container">
@@ -285,6 +230,7 @@ $image_exists = file_exists($server_path);
         </div>
     </div>
     
+    <script src="/clinic/assets/js/patientreports.js"></script>
 </body>
 </html>
 

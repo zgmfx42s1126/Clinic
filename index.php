@@ -1,7 +1,3 @@
-<?php
-include 'includes/navbar.php';
-
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,21 +7,7 @@ include 'includes/navbar.php';
 <link rel="stylesheet" href="./assets/css/index.css">
 </head>
 <body>
-
-<style>
-
-
-body {
-  background: url('./assets/pictures/landingbg.jpg') no-repeat center center;
-  background-size: cover;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  position: relative;
-}
-</style>
-
-
+<?php include 'includes/navbar.php'; ?>
 
 <!-- Landing Card -->
 <div class="landing-card">
@@ -41,7 +23,7 @@ body {
   </button>
 
   <footer>
-    © 2025 Clinic Management
+    © 2026 Clinic Management
   </footer>
 </div>
 

@@ -39,3 +39,16 @@
   transform: scale(1.1); /* small zoom effect */
   border-color: #1565c0;
 }
+
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+}

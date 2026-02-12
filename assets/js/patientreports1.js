@@ -1,5 +1,4 @@
-
-        // Print preview function
+// Print preview function
         function showPrintPreview() {
             // Get the print template content
             const printTemplate = document.querySelector('.print-template');

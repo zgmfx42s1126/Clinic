@@ -39,3 +39,23 @@
   transform: scale(1.1); /* small zoom effect */
   border-color: #1565c0;
 }
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* ✅ adjust spacing between text and logo */
+  font-weight: bold;
+  text-decoration: none;
+  color: rgb(0, 0, 0); /* change if needed */
+}
+
+.clinic-logo {
+  width: 60px;   /* ✅ adjust logo size here */
+  height: 60px;  /* ✅ adjust logo size here */
+  object-fit: contain;
+}
+.logo-img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+}

@@ -482,6 +482,24 @@ $complaint_table_data = getComplaintDistributionForTable($conn, $start_date, $en
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <div
+        id="statistics-data"
+        data-report-type="<?php echo htmlspecialchars(json_encode($report_type), ENT_QUOTES); ?>"
+        data-daily-labels="<?php echo htmlspecialchars(json_encode($daily_data['labels']), ENT_QUOTES); ?>"
+        data-daily-visits="<?php echo htmlspecialchars(json_encode($daily_data['visits']), ENT_QUOTES); ?>"
+        data-daily-dates="<?php echo htmlspecialchars(json_encode($daily_data['dates']), ENT_QUOTES); ?>"
+        data-weekly-labels="<?php echo htmlspecialchars(json_encode($weekly_stats['chart_labels']), ENT_QUOTES); ?>"
+        data-weekly-visits="<?php echo htmlspecialchars(json_encode($weekly_stats['chart_visits']), ENT_QUOTES); ?>"
+        data-weekly-patients="<?php echo htmlspecialchars(json_encode($weekly_stats['chart_patients']), ENT_QUOTES); ?>"
+        data-monthly-labels="<?php echo htmlspecialchars(json_encode($yearly_monthly_stats['chart_labels']), ENT_QUOTES); ?>"
+        data-monthly-visits="<?php echo htmlspecialchars(json_encode($yearly_monthly_stats['chart_visits']), ENT_QUOTES); ?>"
+        data-monthly-patients="<?php echo htmlspecialchars(json_encode($yearly_monthly_stats['chart_patients']), ENT_QUOTES); ?>"
+        data-complaint-labels="<?php echo htmlspecialchars(json_encode($complaint_data['labels']), ENT_QUOTES); ?>"
+        data-complaint-data="<?php echo htmlspecialchars(json_encode($complaint_data['data']), ENT_QUOTES); ?>"
+        data-complaint-colors="<?php echo htmlspecialchars(json_encode($complaint_data['colors']), ENT_QUOTES); ?>"
+        data-top-classes-labels="<?php echo htmlspecialchars(json_encode($top_classes['labels']), ENT_QUOTES); ?>"
+        data-top-classes-data="<?php echo htmlspecialchars(json_encode($top_classes['data']), ENT_QUOTES); ?>"
+    ></div>
     <!-- Main Content Area -->
     <div class="main-content">
         <div class="container">
@@ -901,311 +919,11 @@ $complaint_table_data = getComplaintDistributionForTable($conn, $start_date, $en
         </div>
     </div>
 
-    <script>
-        // Chart instances
-        let visitsChart;
-        let complaintChartInstance;
-        let classesChartInstance;
-        let currentChartType = 'daily';
-
-        const REPORT_TYPE = <?php echo json_encode($report_type); ?>;
-
-        function setActive(btn) {
-            document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-            if (btn) btn.classList.add('active');
-        }
-
-        // DAILY
-        function initDailyChart() {
-            const ctx = document.getElementById('visitsChart').getContext('2d');
-            if (visitsChart) visitsChart.destroy();
-
-            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, 'rgba(67, 97, 238, 0.2)');
-            gradient.addColorStop(1, 'rgba(67, 97, 238, 0.05)');
-
-            visitsChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: <?php echo json_encode($daily_data['labels']); ?>,
-                    datasets: [{
-                        label: 'Daily Visits',
-                        data: <?php echo json_encode($daily_data['visits']); ?>,
-                        borderColor: '#4361ee',
-                        backgroundColor: gradient,
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.3,
-                        pointBackgroundColor: '#4361ee',
-                        pointBorderColor: '#ffffff',
-                        pointBorderWidth: 2,
-                        pointRadius: 5,
-                        pointHoverRadius: 8
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'top' },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                label: function(context) {
-                                    const date = <?php echo json_encode($daily_data['dates']); ?>[context.dataIndex];
-                                    return `${date}: ${context.raw} visits`;
-                                },
-                                title: function() { return ''; }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1 } },
-                        x: { ticks: { maxRotation: 45 } }
-                    }
-                }
-            });
-        }
-
-        // WEEKLY
-        function initWeeklyChart() {
-            const ctx = document.getElementById('visitsChart').getContext('2d');
-            if (visitsChart) visitsChart.destroy();
-
-            const gradient1 = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient1.addColorStop(0, 'rgba(67, 97, 238, 0.9)');
-            gradient1.addColorStop(1, 'rgba(67, 97, 238, 0.6)');
-
-            const gradient2 = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient2.addColorStop(0, 'rgba(16, 185, 129, 0.9)');
-            gradient2.addColorStop(1, 'rgba(16, 185, 129, 0.6)');
-
-            visitsChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: <?php echo json_encode($weekly_stats['chart_labels']); ?>,
-                    datasets: [
-                        {
-                            label: 'Total Visits',
-                            data: <?php echo json_encode($weekly_stats['chart_visits']); ?>,
-                            backgroundColor: gradient1,
-                            borderColor: '#4361ee',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        },
-                        {
-                            label: 'Unique Patients',
-                            data: <?php echo json_encode($weekly_stats['chart_patients']); ?>,
-                            backgroundColor: gradient2,
-                            borderColor: '#10b981',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: true, position: 'top' } },
-                    scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
-                    }
-                }
-            });
-        }
-
-        // MONTHLY (Yearly Analysis)
-        function initMonthlyChart() {
-            const ctx = document.getElementById('visitsChart').getContext('2d');
-            if (visitsChart) visitsChart.destroy();
-
-            const gradient1 = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient1.addColorStop(0, 'rgba(67, 97, 238, 0.9)');
-            gradient1.addColorStop(1, 'rgba(67, 97, 238, 0.6)');
-
-            const gradient2 = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient2.addColorStop(0, 'rgba(16, 185, 129, 0.9)');
-            gradient2.addColorStop(1, 'rgba(16, 185, 129, 0.6)');
-
-            visitsChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: <?php echo json_encode($yearly_monthly_stats['chart_labels']); ?>,
-                    datasets: [
-                        {
-                            label: 'Monthly Visits',
-                            data: <?php echo json_encode($yearly_monthly_stats['chart_visits']); ?>,
-                            backgroundColor: gradient1,
-                            borderColor: '#4361ee',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        },
-                        {
-                            label: 'Monthly Unique Patients',
-                            data: <?php echo json_encode($yearly_monthly_stats['chart_patients']); ?>,
-                            backgroundColor: gradient2,
-                            borderColor: '#10b981',
-                            borderWidth: 1,
-                            borderRadius: 4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: true, position: 'top' } },
-                    scales: {
-                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
-                    }
-                }
-            });
-        }
-
-        // Complaint Chart
-        function initComplaintChart() {
-            const ctx = document.getElementById('complaintChart').getContext('2d');
-            if (complaintChartInstance) complaintChartInstance.destroy();
-
-            complaintChartInstance = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: <?php echo json_encode($complaint_data['labels']); ?>,
-                    datasets: [{
-                        data: <?php echo json_encode($complaint_data['data']); ?>,
-                        backgroundColor: <?php echo json_encode($complaint_data['colors']); ?>,
-                        borderWidth: 2,
-                        borderColor: '#ffffff',
-                        hoverOffset: 15
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'right' } },
-                    cutout: '65%'
-                }
-            });
-        }
-
-        // Classes Chart
-        function initClassesChart() {
-            const ctx = document.getElementById('classesChart').getContext('2d');
-            if (classesChartInstance) classesChartInstance.destroy();
-
-            const colors = [
-                'rgba(67, 97, 238, 0.9)',
-                'rgba(58, 12, 163, 0.9)',
-                'rgba(114, 9, 183, 0.9)',
-                'rgba(247, 37, 133, 0.9)',
-                'rgba(76, 201, 240, 0.9)'
-            ];
-
-            const gradients = colors.map((color) => {
-                const g = ctx.createLinearGradient(0, 0, 0, 300);
-                g.addColorStop(0, color);
-                g.addColorStop(1, color.replace('0.9', '0.6'));
-                return g;
-            });
-
-            classesChartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: <?php echo json_encode($top_classes['labels']); ?>,
-                    datasets: [{
-                        label: 'Number of Visits',
-                        data: <?php echo json_encode($top_classes['data']); ?>,
-                        backgroundColor: gradients,
-                        borderColor: colors.map(c => c.replace('0.9', '1')),
-                        borderWidth: 1,
-                        borderRadius: 4,
-                        borderSkipped: false
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-                }
-            });
-        }
-
-        function showDailyChart(btn) {
-            currentChartType = 'daily';
-            setActive(btn);
-            initDailyChart();
-        }
-
-        function showWeeklyChart(btn) {
-            currentChartType = 'weekly';
-            setActive(btn);
-            initWeeklyChart();
-        }
-
-        function showMonthlyChart(btn) {
-            currentChartType = 'monthly';
-            setActive(btn);
-            initMonthlyChart();
-        }
-
-        function toggleYearSelect(type) {
-            const wrap = document.getElementById('yearSelectWrap');
-            const btnMonthly = document.getElementById('btnMonthly');
-
-            if (type === 'yearly') {
-                wrap.style.display = '';
-                btnMonthly.style.display = '';
-            } else {
-                wrap.style.display = 'none';
-                btnMonthly.style.display = 'none';
-            }
-        }
-
-        // Initialize all charts on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            initComplaintChart();
-            initClassesChart();
-
-            // Default chart selection
-            if (REPORT_TYPE === 'yearly') {
-                document.getElementById('btnMonthly').style.display = '';
-                setActive(document.getElementById('btnMonthly'));
-                initMonthlyChart();
-            } else {
-                // default daily
-                setActive(document.getElementById('btnDaily'));
-                initDailyChart();
-            }
-
-            // Animate stat cards
-            const statCards = document.querySelectorAll('.stat-card');
-            statCards.forEach((card, index) => {
-                card.style.opacity = '0';
-                card.style.transform = 'translateY(20px)';
-                setTimeout(() => {
-                    card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-                    card.style.opacity = '1';
-                    card.style.transform = 'translateY(0)';
-                }, index * 100);
-            });
-
-            // Animate chart containers
-            const chartContainers = document.querySelectorAll('.chart-container');
-            chartContainers.forEach((container, index) => {
-                container.style.opacity = '0';
-                container.style.transform = 'translateY(20px)';
-                setTimeout(() => {
-                    container.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-                    container.style.opacity = '1';
-                    container.style.transform = 'translateY(0)';
-                }, 300 + (index * 100));
-            });
-        });
-    </script>
+    <script src="../assets/js/statistics.js"></script>
 </body>
 </html>
 
 <?php
 if (isset($conn)) $conn->close();
 ?>
+
