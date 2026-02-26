@@ -2,6 +2,11 @@
 include '../includes/conn.php'; 
 include $_SERVER['DOCUMENT_ROOT'] . '/clinic/admin/includes/sidebar.php';
 
+// Start session if not already started
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
@@ -12,12 +17,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     if ($delete_id > 0) {
         $delete_stmt = $conn->prepare("DELETE FROM clinic_log WHERE id = ? LIMIT 1");
         $delete_stmt->bind_param("i", $delete_id);
-        $delete_stmt->execute();
+        
+        if ($delete_stmt->execute()) {
+            // Set success message in session
+            $_SESSION['delete_success'] = true;
+            $_SESSION['delete_message'] = "Log record deleted successfully!";
+        }
+        
         $delete_stmt->close();
     }
     $qs = $_SERVER['QUERY_STRING'] ?? '';
     header('Location: ' . $_SERVER['PHP_SELF'] . ($qs ? ('?' . $qs) : ''));
     exit;
+}
+
+// Check for delete success message
+$show_delete_popup = isset($_SESSION['delete_success']) && $_SESSION['delete_success'] === true;
+$delete_message = isset($_SESSION['delete_message']) ? $_SESSION['delete_message'] : 'Log record deleted successfully!';
+
+// Clear the session variables after reading
+if ($show_delete_popup) {
+    unset($_SESSION['delete_success']);
+    unset($_SESSION['delete_message']);
 }
 
 // Get filter parameters
@@ -183,10 +204,113 @@ if (!empty($all_grades_params)) {
 
 <link rel="stylesheet" href="../assets/css/patient.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="../assets/css/recordslogs.css">
 
-    <link rel="stylesheet" href="../assets/css/recordslogs.css">
+<style>
+/* Popup styles */
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    animation: fadeIn 0.3s ease;
+}
+
+.popup-container {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    animation: slideIn 0.3s ease;
+}
+
+.popup-header {
+    margin-bottom: 20px;
+}
+
+.popup-body h3 {
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 24px;
+}
+
+.popup-body p {
+    color: #666;
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+
+.popup-footer {
+    margin-top: 20px;
+}
+
+.popup-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 40px;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.popup-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.9); }
+}
+</style>
 </head>
 <body>
+
+<!-- Delete Success Popup -->
+<?php if ($show_delete_popup): ?>
+<div class="popup-overlay" id="deletePopup">
+    <div class="popup-container">
+        <div class="popup-header">
+            <i class="fas fa-check-circle" style="color: #28a745; font-size: 48px;"></i>
+        </div>
+        <div class="popup-body">
+            <h3>Success!</h3>
+            <p><?php echo htmlspecialchars($delete_message); ?></p>
+        </div>
+        <div class="popup-footer">
+            <button class="popup-btn" onclick="closeDeletePopup()">OK</button>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="main-content no-print">
 <div class="container">
@@ -371,11 +495,101 @@ if (!empty($all_grades_params)) {
 </div>
 
 <script src="../assets/js/recordslogs.js"></script>
+
+<script>
+// Delete popup functions
+function closeDeletePopup() {
+    const popup = document.getElementById('deletePopup');
+    if (popup) {
+        popup.style.animation = 'fadeOut 0.3s ease forwards';
+        setTimeout(() => {
+            popup.remove();
+        }, 300);
+    }
+}
+
+// Auto-hide popup after 3 seconds
+document.addEventListener('DOMContentLoaded', function() {
+    const popup = document.getElementById('deletePopup');
+    if (popup) {
+        setTimeout(closeDeletePopup, 3000);
+        
+        // Close when clicking outside
+        popup.addEventListener('click', function(e) {
+            if (e.target === popup) {
+                closeDeletePopup();
+            }
+        });
+    }
+});
+
+// Confirm delete function
+function confirmDelete(form, itemType) {
+    return confirm('Are you sure you want to delete this ' + itemType + '? This action cannot be undone.');
+}
+
+// Filter and pagination functions
+function resetFilters() {
+    window.location.href = window.location.pathname;
+}
+
+function applyFilters() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const reportType = document.getElementById('reportType').value;
+    const gradeSection = document.getElementById('gradeSectionFilter').value;
+    const perPage = document.getElementById('perPageSelect').value;
+    
+    let url = window.location.pathname + '?';
+    if (startDate) url += 'start_date=' + encodeURIComponent(startDate) + '&';
+    if (endDate) url += 'end_date=' + encodeURIComponent(endDate) + '&';
+    if (reportType) url += 'report_type=' + encodeURIComponent(reportType) + '&';
+    if (gradeSection) url += 'grade_section=' + encodeURIComponent(gradeSection) + '&';
+    if (perPage) url += 'per_page=' + encodeURIComponent(perPage);
+    
+    window.location.href = url;
+}
+
+function changePage(page) {
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.set('page', page);
+    window.location.search = urlParams.toString();
+}
+
+function changeRecordsPerPage(value) {
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.set('per_page', value);
+    urlParams.set('page', '1'); // Reset to first page when changing per page
+    window.location.search = urlParams.toString();
+}
+
+function searchTable() {
+    const input = document.getElementById('searchInput');
+    const filter = input.value.toUpperCase();
+    const table = document.getElementById('logsTable');
+    const rows = table.getElementsByTagName('tr');
+    
+    for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i].getElementsByTagName('td');
+        let found = false;
+        for (let j = 0; j < cells.length - 1; j++) { // Exclude actions column
+            const cell = cells[j];
+            if (cell) {
+                const textValue = cell.textContent || cell.innerText;
+                if (textValue.toUpperCase().indexOf(filter) > -1) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        rows[i].style.display = found ? '' : 'none';
+    }
+}
+</script>
+
 <?php
 if (isset($all_grades_stmt)) $all_grades_stmt->close();
 if (isset($conn)) $conn->close();
 ?>
 </body>
 </html>
-
-   
