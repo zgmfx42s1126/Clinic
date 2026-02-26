@@ -1,4 +1,7 @@
 <?php
+// Start output buffering at the VERY beginning
+ob_start();
+
 // Database connection
 include '../includes/conn.php';
 include $_SERVER['DOCUMENT_ROOT'] . '/clinic/admin/includes/sidebar.php';
@@ -28,6 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
         $delete_stmt->close();
     }
     $qs = $_SERVER['QUERY_STRING'] ?? '';
+    
+    // Clear output buffer before redirect
+    ob_end_clean();
+    
     header('Location: ' . $_SERVER['PHP_SELF'] . ($qs ? ('?' . $qs) : ''));
     exit;
 }
@@ -268,89 +275,391 @@ $shown_now = ($per_page_param === 'all')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
-    /* Popup styles - Add this to your patient.css file as well */
-    .popup-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-        animation: fadeIn 0.3s ease;
-    }
-
-    .popup-container {
-        background: white;
-        border-radius: 12px;
-        padding: 30px;
-        max-width: 400px;
-        width: 90%;
-        text-align: center;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-        animation: slideIn 0.3s ease;
-    }
-
-    .popup-header {
-        margin-bottom: 20px;
-    }
-
-    .popup-body h3 {
-        color: #333;
-        margin-bottom: 10px;
-        font-size: 24px;
-    }
-
-    .popup-body p {
-        color: #666;
-        margin-bottom: 20px;
-        line-height: 1.6;
-    }
-
-    .popup-footer {
-        margin-top: 20px;
-    }
-
-    .popup-btn {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 12px 40px;
-        border-radius: 25px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-
-    .popup-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-
-    @keyframes slideIn {
-        from {
-            transform: translateY(-30px);
-            opacity: 0;
+        /* Custom styles for filters */
+        .filter-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
-        to {
-            transform: translateY(0);
-            opacity: 1;
-        }
-    }
 
-    @keyframes fadeOut {
-        from { opacity: 1; transform: scale(1); }
-        to { opacity: 0; transform: scale(0.9); }
-    }
+        .filter-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            align-items: end;
+        }
+
+        .filter-group { display:flex; flex-direction:column; }
+
+        .filter-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4b5563;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            width: 100%;
+            transition: border-color 0.3s;
+            background: white;
+        }
+
+        .filter-group input:focus,
+        .filter-group select:focus {
+            outline: none;
+            border-color: #4361ee;
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+        }
+
+        .filter-actions {
+            display:flex;
+            justify-content:flex-end;
+            gap:15px;
+            margin-top:10px;
+        }
+
+        .filter-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+            min-width: 150px;
+        }
+
+        .btn-apply { background:#4361ee; color:#fff; }
+        .btn-apply:hover {
+            background:#3a56d4;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.2);
+        }
+        .btn-reset { background:#6c757d; color:#fff; }
+        .btn-reset:hover { background:#5a6268; transform: translateY(-2px); }
+
+        .table-controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .search-filter {
+            display:flex;
+            gap:15px;
+            align-items:center;
+            flex-wrap:wrap;
+        }
+
+        .search-box {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 16px;
+            min-width: 250px;
+        }
+
+        .filter-select {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 16px;
+            min-width: 150px;
+            background: white;
+        }
+
+        .grade-section-select { min-width: 250px; }
+
+        /* ✅ Show selector positioned beside filters (like your picture) */
+        .show-per-page {
+            display:flex;
+            align-items:center;
+            gap:8px;
+            font-size: 14px;
+            color:#4b5563;
+            margin-left: 10px;
+        }
+        .show-per-page select {
+            padding: 8px 12px;
+            border: 2px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+            min-width: 90px;
+            background: white;
+            cursor: pointer;
+            transition: border-color .3s;
+        }
+        .show-per-page select:hover { border-color:#4361ee; }
+        .show-per-page select:focus { outline:none; border-color:#4361ee; }
+
+        .table-info {
+            font-weight: 600;
+            color: #4361ee;
+            background: #f0f4ff;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid #dbe4ff;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4361ee 0%, #3a56d4 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 20px rgba(67, 97, 238, 0.2);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            display:flex;
+            align-items:center;
+            gap:15px;
+        }
+        .header p { font-size:16px; opacity:.9; margin-bottom: 0; }
+
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        table { width:100%; border-collapse: collapse; }
+        thead { position: sticky; top: 0; z-index: 10; }
+
+        th {
+            background-color: #4361ee;
+            color: white;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            border: none;
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            padding: 14px 12px;
+            border-bottom: 1px solid #eef0f3;
+            vertical-align: middle;
+        }
+
+        tbody tr:hover { background-color: #f8fafc; }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-treated { background:#d1fae5; color:#065f46; }
+        .status-pending { background:#fef3c7; color:#92400e; }
+
+        .btn-delete {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.3s;
+        }
+        .btn-delete:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
+        }
+
+        .empty-state {
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:center;
+            padding:60px 20px;
+            color:#6c757d;
+            text-align:center;
+        }
+        .empty-state i { font-size:64px; margin-bottom:20px; color:#d1d5db; }
+        .empty-state h3 { margin-bottom:10px; color:#4b5563; }
+
+        /* ✅ Pagination centered bottom (like your picture) */
+        .pagination {
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            margin: 18px 0 6px;
+            gap:10px;
+            flex-wrap: wrap;
+            padding: 0 12px 12px;
+        }
+
+        .pagination-btn {
+            padding: 8px 16px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display:flex;
+            align-items:center;
+            gap:5px;
+        }
+
+        .pagination-btn:hover:not(.disabled) {
+            background:#4361ee;
+            color:white;
+            border-color:#4361ee;
+        }
+
+        .pagination-btn.disabled { opacity:.5; cursor:not-allowed; }
+
+        .page-numbers {
+            display:flex;
+            gap:5px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .page-number {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            min-width: 40px;
+            text-align:center;
+            transition: all .3s;
+        }
+
+        .page-number:hover { background:#f0f4ff; border-color:#4361ee; }
+        .page-number.active { background:#4361ee; color:white; border-color:#4361ee; }
+
+        .pagination-info {
+            font-size: 14px;
+            color: #666;
+            margin: 0 0 14px 0;
+            text-align: center;
+            padding: 0 12px 12px;
+        }
+
+        /* Popup styles */
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .popup-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            animation: slideIn 0.3s ease;
+        }
+
+        .popup-header {
+            margin-bottom: 20px;
+        }
+
+        .popup-body h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .popup-body p {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .popup-footer {
+            margin-top: 20px;
+        }
+
+        .popup-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 40px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .popup-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0; transform: scale(0.9); }
+        }
     </style>
 </head>
 <body>
@@ -572,117 +881,161 @@ $shown_now = ($per_page_param === 'all')
     </div>
 </div>
 
-<script src="../assets/js/patientrecords.js"></script>
-
 <script>
-// Delete popup functions
-function closeDeletePopup() {
-    const popup = document.getElementById('deletePopup');
-    if (popup) {
-        popup.style.animation = 'fadeOut 0.3s ease forwards';
-        setTimeout(() => {
-            popup.remove();
-        }, 300);
+    // Popup functions
+    function closeDeletePopup() {
+        const popup = document.getElementById('deletePopup');
+        if (popup) {
+            popup.style.animation = 'fadeOut 0.3s ease forwards';
+            setTimeout(() => {
+                popup.remove();
+            }, 300);
+        }
     }
-}
 
-// Auto-hide popup after 3 seconds
-document.addEventListener('DOMContentLoaded', function() {
-    const popup = document.getElementById('deletePopup');
-    if (popup) {
-        setTimeout(closeDeletePopup, 3000);
-        
-        // Close when clicking outside
-        popup.addEventListener('click', function(e) {
-            if (e.target === popup) {
-                closeDeletePopup();
-            }
-        });
+    // Auto-hide popup after 3 seconds
+    document.addEventListener('DOMContentLoaded', function() {
+        const popup = document.getElementById('deletePopup');
+        if (popup) {
+            setTimeout(closeDeletePopup, 3000);
+            
+            // Close when clicking outside
+            popup.addEventListener('click', function(e) {
+                if (e.target === popup) {
+                    closeDeletePopup();
+                }
+            });
+        }
+    });
+
+    // Confirm delete function
+    function confirmDelete(form, itemType) {
+        return confirm('Are you sure you want to delete this ' + itemType + '? This action cannot be undone.');
     }
-});
 
-// Confirm delete function
-function confirmDelete(form, itemType) {
-    return confirm('Are you sure you want to delete this ' + itemType + '? This action cannot be undone.');
-}
+    function getPerPage() {
+        const sel = document.getElementById('perPageSelect');
+        return sel ? sel.value : '10';
+    }
 
-// Your existing functions (make sure they're defined)
-function resetFilters() {
-    window.location.href = window.location.pathname;
-}
+    function buildUrl(page = 1, perPage = null) {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const reportType = document.getElementById('reportType').value;
+        const gradeSection = document.getElementById('gradeSectionFilter').value;
 
-function applyFilters() {
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-    const reportType = document.getElementById('reportType').value;
-    const gradeSection = document.getElementById('gradeSectionFilter').value;
-    const perPage = document.getElementById('perPageSelect').value;
-    
-    let url = window.location.pathname + '?';
-    if (startDate) url += 'start_date=' + encodeURIComponent(startDate) + '&';
-    if (endDate) url += 'end_date=' + encodeURIComponent(endDate) + '&';
-    if (reportType) url += 'report_type=' + encodeURIComponent(reportType) + '&';
-    if (gradeSection) url += 'grade_section=' + encodeURIComponent(gradeSection) + '&';
-    if (perPage) url += 'per_page=' + encodeURIComponent(perPage);
-    
-    window.location.href = url;
-}
+        const per = (perPage !== null) ? perPage : getPerPage();
 
-function changePage(page) {
-    const urlParams = new URLSearchParams(window.location.search);
-    urlParams.set('page', page);
-    window.location.search = urlParams.toString();
-}
+        let url = `?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}&report_type=${encodeURIComponent(reportType)}&page=${page}`;
 
-function changeRecordsPerPage(value) {
-    const urlParams = new URLSearchParams(window.location.search);
-    urlParams.set('per_page', value);
-    urlParams.set('page', '1'); // Reset to first page when changing per page
-    window.location.search = urlParams.toString();
-}
+        if (gradeSection) url += `&grade_section=${encodeURIComponent(gradeSection)}`;
+        if (per) url += `&per_page=${encodeURIComponent(per)}`;
 
-function searchTable() {
-    // Your search functionality
-    const input = document.getElementById('searchInput');
-    const filter = input.value.toUpperCase();
-    const table = document.getElementById('patientsTable');
-    const rows = table.getElementsByTagName('tr');
-    
-    for (let i = 1; i < rows.length; i++) {
-        const cells = rows[i].getElementsByTagName('td');
-        let found = false;
-        for (let j = 0; j < cells.length - 1; j++) { // Exclude actions column
-            const cell = cells[j];
-            if (cell) {
-                const textValue = cell.textContent || cell.innerText;
-                if (textValue.toUpperCase().indexOf(filter) > -1) {
+        return url;
+    }
+
+    function applyFilters() {
+        window.location.href = buildUrl(1);
+    }
+
+    function resetFilters() {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+
+        document.getElementById('startDate').value = todayStr;
+        document.getElementById('endDate').value = todayStr;
+        document.getElementById('reportType').value = "Today's Analysis";
+        document.getElementById('gradeSectionFilter').value = '';
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('searchInput').value = '';
+
+        window.location.href = `?start_date=${encodeURIComponent(todayStr)}&end_date=${encodeURIComponent(todayStr)}&report_type=${encodeURIComponent("Today's Analysis")}&page=1&per_page=10`;
+    }
+
+    function changePage(newPage) {
+        if (newPage < 1) return;
+        window.location.href = buildUrl(newPage);
+    }
+
+    // ✅ per-page change: always go back to page 1, choices won't disappear
+    function changeRecordsPerPage(perPage) {
+        window.location.href = buildUrl(1, perPage);
+    }
+
+    // Auto-update date range when report type changes
+    document.getElementById('reportType').addEventListener('change', function() {
+        const reportType = this.value;
+        const endDateInput = document.getElementById('endDate');
+        const startDateInput = document.getElementById('startDate');
+
+        if (reportType === "Today's Analysis") {
+            const todayStr = new Date().toISOString().split('T')[0];
+            startDateInput.value = todayStr;
+            endDateInput.value = todayStr;
+            return;
+        }
+
+        const endDate = new Date(endDateInput.value);
+        let startDate = new Date(endDate);
+
+        switch(reportType) {
+            case 'Weekly Analysis':
+                startDate.setDate(startDate.getDate() - 7);
+                break;
+            case 'Monthly Analysis':
+                startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+                break;
+            case 'Yearly Analysis':
+                startDate.setFullYear(startDate.getFullYear() - 1);
+                break;
+        }
+        startDateInput.value = startDate.toISOString().split('T')[0];
+    });
+
+    // Search function (client-side)
+    function searchTable() {
+        const input = document.getElementById("searchInput");
+        const filter = input.value.toUpperCase();
+        const table = document.getElementById("patientsTable");
+        if (!table) return;
+
+        const tr = table.getElementsByTagName("tr");
+        for (let i = 1; i < tr.length; i++) {
+            const tds = tr[i].getElementsByTagName("td");
+            let found = false;
+
+            for (let j = 0; j < tds.length; j++) {
+                const txtValue = (tds[j].textContent || tds[j].innerText || '').toUpperCase();
+                if (txtValue.indexOf(filter) > -1) {
                     found = true;
                     break;
                 }
             }
+            tr[i].style.display = found ? "" : "none";
         }
-        rows[i].style.display = found ? '' : 'none';
     }
-}
 
-function filterTableByStatus() {
-    // Your filter by status functionality
-    const filter = document.getElementById('statusFilter').value.toUpperCase();
-    const table = document.getElementById('patientsTable');
-    const rows = table.getElementsByTagName('tr');
-    
-    for (let i = 1; i < rows.length; i++) {
-        const statusCell = rows[i].getElementsByTagName('td')[6]; // Status column
-        if (statusCell) {
-            const statusText = statusCell.textContent || statusCell.innerText;
-            if (filter === '' || statusText.toUpperCase().indexOf(filter) > -1) {
-                rows[i].style.display = '';
+    // Filter table by status (client-side)
+    function filterTableByStatus() {
+        const filter = document.getElementById("statusFilter").value.toUpperCase();
+        const table = document.getElementById("patientsTable");
+        if (!table) return;
+
+        const tr = table.getElementsByTagName("tr");
+        for (let i = 1; i < tr.length; i++) {
+            const statusTd = tr[i].getElementsByTagName("td")[6]; // Status column
+            if (!statusTd) continue;
+
+            const statusText = (statusTd.textContent || statusTd.innerText || '').toUpperCase();
+            const status = statusText.includes("TREATED") ? "TREATED" : "PENDING";
+
+            if (filter === "" || (filter === "TREATED" && status === "TREATED") || (filter === "PENDING" && status === "PENDING")) {
+                tr[i].style.display = "";
             } else {
-                rows[i].style.display = 'none';
+                tr[i].style.display = "none";
             }
         }
     }
-}
 </script>
 
 </body>
@@ -692,4 +1045,7 @@ function filterTableByStatus() {
 if (isset($all_grades_stmt)) $all_grades_stmt->close();
 if (isset($stmt)) $stmt->close();
 if (isset($conn)) $conn->close();
+
+// End output buffering and send output
+ob_end_flush();
 ?>

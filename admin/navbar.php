@@ -1,3 +1,5 @@
+<link rel="stylesheet" href="./assets/css/navbar.css">
+
 <!-- Navbar -->
 <div class="navbar">
   <a href="/clinic/" class="logo">

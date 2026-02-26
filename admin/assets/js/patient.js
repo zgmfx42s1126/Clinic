@@ -156,6 +156,9 @@
                 }
             });
             
+            // Log image status
+            console.log('Image exists: <?php echo $image_exists ? "Yes" : "No"; ?>');
+            console.log('Image path: <?php echo $image_path; ?>');
         });
         
         // Keyboard shortcuts
